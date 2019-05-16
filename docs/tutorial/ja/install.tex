@@ -1,0 +1,173 @@
+\documentclass{article}
+\usepackage[dvipdfm]{graphicx}
+\title{SELinux Policy Editor(seedit)インストールガイド 2.1}
+\author{中村　雄一\thanks{himainu-ynakam@miomio.jp}}
+\begin{document}
+\def\labelenumi{(\theenumi)}
+\maketitle
+\tableofcontents
+\newpage
+
+このドキュメントは、SELinux Policy Editorのインストール方法を解説してい
+ます。
+
+\section{動作環境}
+Fedora Core6およびCent OS 4.3での動作を確認しています。
+Fedora Core 5でも動く可能性は高いです。
+
+\section{インストール}  \label{sec:rpm}
+利用ディストリビューションによってインストール方法は違います。
+
+\subsection{rpmパッケージのインストール(Fedora Coreの場合)}
+SEEditは、Fedora Extrasに含まれているため、簡単にインストールできます。
+ \begin{verbatim}
+#yum install seedit-gui
+(seedit,seedit-policy,seedit-guiパッケージが導入されます)
+ \end{verbatim}
+GUIが不要な場合は、以下のようにします。
+\begin{verbatim}
+#yum install seedit-policy	
+(seedit,seedit-policyパッケージが導入されます)
+\end{verbatim}
+SEEditを初期化し、リブートします。
+\begin{verbatim}
+# /usr/sbin/seedit-init
+# reboot
+\end{verbatim}
+/usr/sbin/seedit-initはseeditを使うための初期化作業をしてくれるコマンドです。/etc/selinux/configの編集、auditdの起動、ポリシの初期化などを行ってくれます。\\
+再起動時、ファイルのラベルが自動的に付与され直しされます。数分かかります。
+	その後、リブートされます。
+Fedora Core 6の場合、さらにもう一度リブートがかかります(途中で画面が青くなっても問題はありません)。
+
+無事ログイン
+	  できたら、完了です。\\
+なお、auditdサービスが起動するようになっています。これは詳細なSELinuxの
+	ログを/var/log/audit/audit.logに取ることができ、ポリシ自動生成機
+	能をより便利に使うために必要ですので、このサービスは有効にしてお
+	  くことを強く薦めます。\\
+これでインストールは終わりです。インストールされているか確認するには、\ref{sec:makesure}章を参照してください。
+\subsection{rpmパッケージのインストール(Cent OSの場合)}
+RPMパッケージを使うことで簡単にインストールできます
+\begin{enumerate}
+ \item  必要なパッケージ\\
+checkpolicy,auditパッケージが必要です。以下でインストールしておきます
+	(CentOSではデフォルトで入っています)。
+\begin{verbatim}
+# yum install checkpolicy audit
+\end{verbatim}
+
+    \item ファイルを入手\\
+以下より、seedit,seedit-policy,seedit-doc, seedit-guiパッケー
+	ジを入手します。	
+X Window Systemが入ってない場合は、seedit-guiはダウンロードしません。
+\begin{verbatim}
+http://seedit.sourceforge.net/ja/download.html
+\end{verbatim}
+
+seeditパッケージには、SEEditの中核をなすライブラリやコマンド群が入ってい
+	ます。
+seedit-policyには、サンプルのポリシ(SPDLで書かれた単純化ポリシ)が入って
+	います。seedit-guiには、GUIが入っています。
+
+ \item rpmパッケージをインストール\\
+入手したrpmパッケージを以下のようにインストールし,リブートします。
+\begin{verbatim}
+$ su  - 
+# rpm -ivh seedit-*.rpm
+# /usr/sbin/seedit-init
+# reboot
+\end{verbatim}
+/usr/sbin/seedit-initはseeditを使うための初期化作業をしてくれるコマンドです。/etc/selinux/configの編集、auditdの起動、ポリシの初期化などを行ってくれます。\\
+再起動時、ファイルのラベルが自動的に付与され直しされます。数分かかります。
+	その後、リブートされます。
+Fedora Core 6の場合、さらにもう一度リブートがかかります(途中で画面が青くなっても問題はありません)。
+
+無事ログイン
+	  できたら、完了です。\\
+なお、auditdサービスが起動するようになっています。これは詳細なSELinuxの
+	ログを/var/log/audit/audit.logに取ることができ、ポリシ自動生成機
+	能をより便利に使うために必要ですので、このサービスは有効にしておくことを強く薦めます。
+
+\item CentOS 4の注意点\\ 
+CentOS 4のSELinuxパッケージに含まれるラベル初期化コマンド(fixfiles)のバ
+	グにより、初期化がうまくいかないことがあります。
+具体的には、「今までにstrcitポリシーを使ったことがある」または「RBACを有
+	効にしたことがある」場合は、以下のコマンドで初期化する必要があり
+	ます。
+\begin{verbatim}
+# setfiles /etc/selinux/seedit/contexts/files/file_contexts  / -F -vv
+# reboot
+\end{verbatim}
+
+
+ \item インストールは終わりです\\
+インストールされているか確認するには、\ref{sec:makesure}章を参照してくだ
+	さい。
+\end{enumerate}
+
+\subsection{アンインストール}
+アンインストールは簡単です。
+\begin{verbatim}
+# rpm -e seedit-policy seedit
+# reboot
+\end{verbatim}
+再起動時、SELinuxのtargeted policy(Fedora Coreデフォルト)の、permissive
+	  モードで起動します。
+
+
+\section{何が影響されるか？}
+インストールによって、
+/etc/selinux/configが以下のように編集されます。
+\begin{verbatim}
+SELINUX=permissive	
+SELINUXTYPE=seedit
+\end{verbatim}
+それ以外は、既存のシステムに影響を及ぼしません。
+
+\section{動作確認}\label{sec:makesure}
+seeditが正しくインストールされているか否かは、GUIおよびコマンドラインか
+ら確認可能です。
+
+\subsection{GUIで動作確認}
+Gnomeのメニューから、システム $\rightarrow$ 管理 $\rightarrow$ SELinux
+Policy Editor、を選択します(Fedora Core6の場合。何か端
+末を開き「seedit-gui」と入力しても起動します)。rootユーザーのパスワードを入力すると、図
+\ref{fig:controlpanel}のような画面が現れます。
+
+
+\begin{figure}
+\caption{SELinux Policy Editor コントロールパネル}\label{fig:controlpanel}
+\includegraphics*{images/controlpanel.png}
+\end{figure}
+ここから、
+ {\it ステータス}を選択すると、図 \ref{fig:status-selinux}のような画面が
+ 現れます。{\it seeditがインストールされている？　はい}と表示されればイ
+ ンストールは成功です。
+
+\begin{figure}
+\caption{Status}\label{fig:status-selinux}
+\includegraphics{images/status-selinux.png}
+\end{figure}
+
+
+\subsection{コマンドラインで動作確認}
+次のような出力になれば成功です。
+\begin{verbatim}
+# sestatus
+SELinux status:                 enabled
+Current mode:                   permissive
+Mode from config file:          permissive
+...
+Policy from config file:        seedit
+\end{verbatim}
+「Policy from config file:        seedit」となってます。
+
+\subsection{次は何をする？}
+
+どうやって設定をしていくかの詳細は「SELinux Policy Editor管理ガイ
+ド（マニュアル）」を参照してください。
+また、インストール直後は、Permissiveモードになっていることに気を付けます。
+Permissiveモードでは、SELinuxはシステムを守ってくれません。実運用時はど
+うするかについても、管理ガイドに載っています(Enforcingモードに切り替えま
+す)。
+\end{document}

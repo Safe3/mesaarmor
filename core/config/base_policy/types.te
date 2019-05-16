@@ -1,0 +1,144 @@
+# SELinux Policy Editor, a simple editor for SELinux policies
+# Copyright (C) 2006 Yuichi Nakamura
+
+## minimum types used in converter
+type security_t,file_type,fs_type;
+#unlabeled_t is for unlabeled object
+type unlabeled_t,file_type,fs_type,domain;
+#in some condition, unlabeled files are labeled as file_t
+type file_t, file_type,fs_type;
+type fs_t,fs_type;
+type default_t,file_type,fs_type;
+type port_t,port_type;
+type netif_t,netif_type;
+type node_t,node_type;
+
+#labels for terminals
+type tty_device_t,file_type,fs_type;
+type devtty_t,fs_type, file_type;
+type devpts_t,fs_type, file_type;
+type ptmx_t,file_type, fs_type;
+type vcs_device_t,file_type;
+
+#dummy label
+type dummy_label_t;
+
+#labels for unsupported file system
+#To see what is unsupported, see genfs_contexts
+type unsupported_fs_t,fs_type,file_type;
+
+##Labels for Well-Known ports
+type wellknown_tcp_port_t,port_type;
+type wellknown_udp_port_t,port_type;
+##labels for unreserved 1024 over ports
+type unpriv_tcp_port_t,port_type;
+type unpriv_udp_port_t,port_type;
+#typeattribute unpriv_tcp_port_t unpriv_port_type;
+#typeattribute unpriv_udp_port_t unpriv_port_type;
+
+##Android related
+type app_data_file, file_type;
+type unlabeled, file_type;
+#type kernel, domain, mlstrustedsubject;
+type labeledfs, fs_type;
+type port, port_type;
+type netif, netif_type;
+type node, node_type;
+type proc, fs_type;
+#type null_device, dev_type, mlstrustedobject;
+type pipefs, fs_type;
+type sockfs, fs_type;
+type devpts, fs_type, mlstrustedobject;
+type tmpfs, fs_type;
+#type device, dev_type, fs_type;
+type shm, fs_type;
+type mqueue, fs_type;
+#type rootfs, fs_type;
+type proc_net, fs_type;
+type qtaguid_proc, fs_type, mlstrustedobject;
+type proc_cpuinfo, fs_type;
+type proc_sysrq, fs_type;
+type proc_security, fs_type;
+#type usermodehelper, fs_type, sysfs_type;
+type proc_bluetooth_writable, fs_type;
+type proc_drop_caches, fs_type;
+type proc_uid_cputime_showstat, fs_type;
+type proc_uid_cputime_removeuid, fs_type;
+type selinuxfs, fs_type, mlstrustedobject;
+type cgroup, fs_type, mlstrustedobject;
+type sysfs, fs_type, sysfs_type, mlstrustedobject;
+type sysfs_writable, fs_type, sysfs_type, mlstrustedobject;
+type inotify, fs_type, mlstrustedobject;
+type vfat, sdcard_type, fs_type, mlstrustedobject;
+type fuse, sdcard_type, fs_type, mlstrustedobject;
+type pstorefs, fs_type;
+type functionfs, fs_type;
+type usbfs, fs_type;
+type binfmt_miscfs, fs_type;
+type debugfs, fs_type, mlstrustedobject;
+type system_app_data_file, file_type;
+#type mediaserver_qmuxd_socket, file_type;
+#type system_server_qmuxd_socket, file_type;
+#type rild_qmuxd_socket, file_type;
+#type bridge_qmuxd_socket, file_type;
+#type netmgrd_qmuxd_socket, file_type;
+#type radio_qmuxd_socket, file_type;
+#type sensors_qmuxd_socket, file_type;
+#type thermald_qmuxd_socket, file_type;
+type tee_data_file, file_type, data_file_type;
+type untrusted_app_devpts, fs_type;
+type gps_control, file_type;
+type mnt_media_rw_file, file_type; # type trans to stub file, need new way similar tmpfs
+type mnt_media_rw_stub_file, file_type;
+type storage_file, file_type; #
+type storage_stub_file, file_type;
+#type nfc_data_file, file_type, data_file_type;
+#type radio_data_file, file_type, data_file_type, mlstrustedobject;
+type system_app_service, service_manager_type; #didn't find system_app_service in service_contexts
+
+# TODO: for hammerhead only, move this to platform folder?
+type firmware_file, fs_type;
+type bluetooth_efs_file, file_type;
+#type mpdecision_socket, file_type;
+type drmserver_socket, file_type;
+type thermald_socket, file_type;
+
+# TODO: Android specific
+type frp_block_device, dev_type;
+type system_block_device, dev_type;
+type recovery_block_device, dev_type;
+type ramdump_device, dev_type;
+
+type default_prop, property_type;
+type shell_prop, property_type;
+type debug_prop, property_type;
+type debuggerd_prop, property_type;
+type dhcp_prop, property_type;
+type fingerprint_prop, property_type;
+type ffs_prop, property_type;
+type radio_prop, property_type;
+type net_radio_prop, property_type;
+type system_radio_prop, property_type;
+type system_prop, property_type;
+type vold_prop, property_type;
+type ctl_bootanim_prop, property_type;
+type ctl_default_prop, property_type;
+type ctl_dhcp_pan_prop, property_type;
+type ctl_dumpstate_prop, property_type;
+type ctl_fuse_prop, property_type;
+type ctl_mdnsd_prop, property_type;
+type ctl_rildaemon_prop, property_type;
+type ctl_bugreport_prop, property_type;
+type ctl_console_prop, property_type;
+type audio_prop, property_type;
+type logd_prop, property_type;
+type restorecon_prop, property_type;
+type security_prop, property_type;
+type bluetooth_prop, property_type;
+type pan_result_prop, property_type;
+type powerctl_prop, property_type;
+type nfc_prop, property_type;
+type dalvik_prop, property_type;
+type config_prop, property_type;
+
+type ctl_mpdecision, property_type;

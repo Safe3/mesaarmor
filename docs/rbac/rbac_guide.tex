@@ -1,0 +1,356 @@
+\documentclass{article}
+\title{SELinux Policy Editor RBAC(Role Based Access Control) guide (for Ver 2.1))}
+\author{Yuichi Nakamura \thanks{himainu-ynakam@miomio.jp}}
+\begin{document}
+\def\labelenumi{(\theenumi)}
+\maketitle
+\tableofcontents
+\newpage
+
+This document describes how to use RBAC(Role Based Access Control) in seedit.
+
+\section{What is RBAC}
+\subsection{Overview}
+SPDL supports configuration of RBAC(Role Based Access Control).
+In default policy, the domain for login user is unconfined\_t.
+So, the behavior of user is not confined by SELinux.\\
+To increase security of login user, RBAC is useful.
+By using RBAC, you can restrict behavior of users by assigning role to
+user. For example, you can assign role webmaster\_r to user webmaster,
+and give him rights to do web master work. 
+
+\subsection{How RBAC works in SELinux}
+How RBAC works is composed of 2 parts, one is assign role to user, 
+second is assign domain to user shell.
+
+\begin{enumerate}
+ \item Assign role \\
+  When user logs in from login programs(login, sshd, gdm), login programs
+  assign role to users. The rule that describes what kind of roles the
+  user is allowed to use, is described in policy.
+  Login programs assign roles referring to policy.For example, if user
+       webmaster is allowed to use webmaster\_r role,  login program assign webmaster\_r to user webmaster.\\
+ \item Assign domain\\
+  Role is only strings, 
+  to confine behavior of user, domain must be given to user shell. \\
+  When user shell is launched domain is given according to role. For
+       example, when user webmaster login as webmaster\_r role,
+       webmaster\_t domain is given to user shell. webmaster\_t domain
+       is configured to be allowed homepage admin works.
+
+\end{enumerate}
+
+
+\section{Enable RBAC}
+To enable RBAC, use following command.
+\begin{verbatim}
+# seedit-rbac on
+(It takes some minutes)
+# reboot
+\end{verbatim}
+By above commands, files necessary to configure RBAC is moved from
+/etc/seedit/policy/extra to /etc/seedit/policy, and seedit-load is
+run.Reboot is necessary because some domains become invalid, to fix this
+you have to reboot.\\
+
+To disable RBAC, use following.
+\begin{verbatim}
+# seedit-rbac off
+# reboot
+\end{verbatim}
+
+\section{Default RBAC Configuration}
+Following 3 roles are defined by default.
+
+\begin{itemize}
+ \item sysadm\_r\\
+       It is role for administrator. It can work as unconfined
+       domain sysadm\_t. By default, only root can login as the role.
+ \item staff\_r \\
+       It is role, to do not administrative work for administrative
+       user.
+       By default, only root can login as the role.
+ \item user\_r \\
+       It is a role for normal users. By default, user\_u can login as
+       root.
+       user\_u is a user that is not configured RBAC, by default users
+       except root.
+       
+\end{itemize}
+
+\begin{itemize}
+ \item Attention\\
+       \begin{enumerate}
+	\item  su command can not be used, except sysadm\_r\\
+	\item  Only user who can use sysadm\_r can login from gdm.\\
+	       You need to add a lots of configurations to login from
+	       other roles, and it may decrease security. By default
+	       only root user can login from X. If other users want to
+	       login from X, you have to allow to use sysadm\_r, but be
+	       careful, because behavior of such users are not confined
+	       by SELinux.
+	\item Configure to use sysadm\_r\\
+	       Usually, you will not login root user directly. You
+	       will use su, you have to allow some user to use sysadm\_r.
+	       For example to allow user ynakam to use sysadm\_r, add following after {\it
+	       user root;} in /etc/seedit/policy/sysadm\_r.sp.\\
+	       \begin{verbatim}
+		user ynakam;
+	       \end{verbatim}
+
+       \end{enumerate}
+\end{itemize}
+
+
+\section{Login by RBAC}
+\subsection{Check role}
+When you enable RBAC, role are given to login user. 
+You can see it by id command.\\
+When you login as root user,  staff\_r role is given.
+root is allowed to use staff\_r and sysadm\_r, but login program give
+staff\_r role.
+\\
+Let's see it by id command.
+\begin{verbatim}
+# id 
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),
+3(sys),4(adm),6(disk),10(wheel) 
+context=root:staff_r:staff_t
+\end{verbatim}
+\begin{verbatim}
+context=root:staff_r:staff_t	
+\end{verbatim}
+shows role, staff\_r is role. User shell is given domain according to
+role, in this case staff\_t. Inside SELinux, domain is used for access
+control.\\
+staff\_r is given little access rights. You can not do any
+administration work in this role.\\
+For example, you can not access homepage.
+\begin{verbatim}
+# cat /var/www/html/index.html
+Permission denied
+\end{verbatim}
+
+\subsection{Change role}
+To do administrative work, you have to switch role to sysadm\_r role.
+You can do it by newrole command, like below.
+\begin{verbatim}
+# newrole -r sysadm_r
+Authenticating root
+Password:
+\end{verbatim}
+You have to enter password of current user(this case root).
+Then check role by id command.
+\begin{verbatim}
+# id 
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),
+3(sys),4(adm),6(disk),10(wheel) 
+context=root:sysadm_r:sysadm_t
+\end{verbatim}
+Role is  sysadm\_r. Domain of user shell is sysadm\_t. sysadm\_t is
+unconfined domain, so you can do any work.\\
+To switch role, the user must be allowed to use the role, if the user is
+not allowed to use the role, newrole will fail.\\
+To allow user to use role, see next section.
+
+
+\section{Configuration elements for RBAC}
+To configure RBAC, it is better to understand how to describe.
+\subsection{role and user statements}
+To configure RBAC, there are 2 SPDL configuration elements, {\it role} and
+{\it user}.
+\begin{itemize}
+ \item role {\it name  of role}\\
+       This means configurations is going to be done for specified
+       role. Access right is given to corresponding domain. And the
+       configuration filename must be {\it role name}.sp.
+ \item user {\it user name}\\
+       This allows user to use role.  user\_u user name is special, it is
+       the default role of users that is not configured to use
+       domain.How to allow to use sysadm\_r, see section \ref{sec:allowsysadm}.
+\end{itemize}
+
+\subsubsection{Example}
+Let's see example.
+\begin{verbatim}
+1:{
+2:role webmaster_r;
+3:user webmaster;
+4:allow /var/www/** r,w,s;
+}	
+\end{verbatim}
+
+Line 2 means, configurations between \{\} is for webmaster\_r role.\\
+Line 3 means, user name webmaster can use webmaster\_r role.\\
+Following, access rights are given to domain webmaster\_t
+domain(Remember that webmaster\_r role behaves as webmaster\_t domain in SELinux system).
+Line 4 means, webmaster\_t domain(This equals user that logined as
+webmaster\_r role)is allowed to read, write under /var/www.\\
+\subsubsection{user\_u user name}
+Let's see example  of user\_u user name.\\
+
+\begin{verbatim}
+Assume all configurations for RBAC are following.
+* In sysadm_r.sp
+{
+role sysadm_r;
+user root;
+..
+}	
+* In webmaster_r.sp
+{
+role webmaster_r;
+user webmaster
+..
+}
+* In user_r.sp
+{
+role user_r;
+user user_u;
+..
+}
+\end{verbatim}
+In above, 3 roles are configured. 
+You can see, user root and webmaster are assigned role.
+In this case user\_u is {\it all users except root and webmaster}.
+
+
+\subsection{Home directories}
+
+To configure access control to home directories, we could use
+\textasciitilde / . In normal domain, it means all users home
+directories. But, for configuration of role, the meaning is different.\\
+The rule is simple:
+\begin{verbatim}
+~/ means home directories for users that can use role	
+\end{verbatim}
+Let's see example.
+\begin{verbatim}
+{
+1:role webmaster_r;
+2:user web1;
+3:user web2;
+4:allow ~/** r,w,s;
+\end{verbatim}
+In this case, line 4 is allow to write home directories for user1 and
+user2.
+So, when user web1/web2 login as webmaster\_r role, they can read write
+their home directories, but can not access other users home directories.
+
+\begin{verbatim}
+{
+1:role user_r;
+2:user user_u;
+3:allow ~/** r,w,s;
+\end{verbatim}
+user\_u is supported, too. Line 3 means home directories for user\_u users.
+
+\subsection{Allow user to use sysadm\_r role}\label{sec:allowsysadm}
+You can easily allow to use sysadm\_r.
+Open /etc/seedit/policy/sysadm\_r.sp(Configuration file for sysadm\_r
+role).
+add following, after {\it user root;}
+\begin{verbatim}
+user <username you want to allow to use sysadm_r>;	
+\end{verbatim}
+and seedit-load.
+
+
+\section{Creating new role}
+The best way to understand RBAC is to create  new role. Let's see it by
+example.
+Here, we will create new role for webmaster, the name is webmaster\_r.
+And assign the role to user whose name is webmaster.
+\subsection{Create uid=0 user}
+The uid for  user that does some administration work, must be 0.
+It is to pass Linux permission check.\\
+Following commands create user webmaster as uid=0.
+\begin{verbatim}
+# useradd -u 0 -o webmaster
+# passwd webmaster
+\end{verbatim}
+
+\subsection{Create template}
+You can create template configuration by seedit-template command.\\
+The usage is following.
+\begin{verbatim}
+seedit-template -r <role> -u <user> -o <output directory>
+\end{verbatim}
+If you specify -o option, configuration is written to file, before
+writing to file, run command without -o option to make sure.\\
+
+
+Following is example of generating configuration for webmaster\_r role.
+
+\begin{verbatim}
+# seedit-template -r webmaster_r -u webmaster
+{
+role webmaster_r;
+user webmaster;
+include user_common.sp;
+include common-relaxed.sp;
+allow ~/** r,w,s;
+allowpriv part_relabel;
+allowpriv dac_override;
+allowpriv dac_read_search;
+}
+\end{verbatim}
+Template configuration is generated. user webmaster can use webmaster\_r
+role. By include common configurations to behave as login user is
+imported, system critical access rights are not allowed here.
+And webmaster\_t is allowed to access user webmaster's home
+directory(When user webmaster login as webmaster\_r he can access his
+home directory).\\
+3 allowpriv are outputted, this is usually needed to do administration work.
+\begin{verbatim}
+allowpriv part_relabel;	
+\end{verbatim}
+This is necessary to use restorecon. You can use restorecon to files those
+webmaster\_r is writable. If you do not use restorecon, delete this.
+\begin{verbatim}
+allowpriv dac_override;
+allowpriv dac_read_search;
+\end{verbatim}
+Those are necessary to skip Linux permission check.
+
+\subsection{Write to file}
+You can write above configuration by -o option of seedit-template.
+\begin{verbatim}
+# seedit-template -r webmaster_r -u webmaster -o /etc/seedit/policy/	
+\end{verbatim}
+Configuration is written to /etc/seedit/policy/webmaster\_r.sp
+
+
+\subsection{Add permissions for administration }
+Then, add permissions to administrate web page.
+You need write permission under /var/www.
+So, add 
+\begin{verbatim}
+allow /var/www/** r,w,s;
+\end{verbatim}
+before \}.
+
+\subsection{Load and test}
+Let's load configuration by seedit-load.
+\begin{verbatim}
+#seedit-load
+\end{verbatim}
+And test to login.
+Login as webmaster.
+Let's see role.
+\begin{verbatim}
+#id
+uid=0(root) gid=502(webmaster) groups=502(webmaster) 
+context=webmaster:webmaster_r:webmaster_t
+\end{verbatim}
+Now you are webmaster!\\
+You can upload file to /var/www/html from your home directory.
+If you find something is denied and it is necessary, test in permissive
+mode, and  add
+configuration to /etc/seedit/policy/webmaster\_r.sp using audit2spdl
+like normal domain.
+
+%ユーザを後で作ったら、restoreconが必要！！
+
+
+\end{document}

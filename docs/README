@@ -1,0 +1,10 @@
+README for Documents for SELinux Policy Editor
+
+* manual
+Manual for simplified policy
+
+* spdl_spec
+Reference for Simplified Policy Description Language(SPDL)
+
+* rbac
+How to use RBAC(Role Based Access Control) in seedit

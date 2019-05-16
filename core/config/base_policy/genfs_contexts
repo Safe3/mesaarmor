@@ -1,0 +1,56 @@
+# SELinux Policy Editor, a simple editor for SELinux policies
+# Copyright (C) 2006 Yuichi Nakamura
+
+# proc (excluding /proc/PID)
+# used in allowproc
+genfscon proc /				gen_context(system_u:object_r:proc_t,s0)
+genfscon proc /kmsg			gen_context(system_u:object_r:proc_kmsg_t,s0)
+genfscon proc /kcore			gen_context(system_u:object_r:proc_kcore_t,s0)
+
+# used in allowadm getsecurity
+# selinuxfs
+genfscon selinuxfs /			gen_context(system_u:object_r:security_t,s0)
+
+## Following are used in allowfs 
+# sysfs
+genfscon sysfs /			gen_context(system_u:object_r:sysfs_t,s0)
+# autofs
+genfscon autofs /			gen_context(system_u:object_r:autofs_t,s0)
+genfscon automount /			gen_context(system_u:object_r:autofs_t,s0)
+# usbfs
+genfscon usbdevfs /			gen_context(system_u:object_r:usbfs_t,s0)
+genfscon usbfs / 			gen_context(system_u:object_r:usbfs_t,s0)
+# cd,dvd file systems
+genfscon iso9660 /			gen_context(system_u:object_r:cdfs_t,s0)
+genfscon udf /				gen_context(system_u:object_r:cdfs_t,s0)
+# romfs
+genfscon romfs /			gen_context(system_u:object_r:romfs_t,s0)
+genfscon cramfs /			gen_context(system_u:object_r:romfs_t,s0)
+# ramfs
+genfscon ramfs /			gen_context(system_u:object_r:ramfs_t,s0)
+# File system for windows&dos
+genfscon vfat /				gen_context(system_u:object_r:dosfs_t,s0)
+genfscon msdos /			gen_context(system_u:object_r:dosfs_t,s0)
+genfscon fat /				gen_context(system_u:object_r:dosfs_t,s0)
+genfscon ntfs /				gen_context(system_u:object_r:dosfs_t,s0)
+# samba
+genfscon cifs /				gen_context(system_u:object_r:smbfs_t,s0)
+genfscon smbfs /			gen_context(system_u:object_r:smbfs_t,s0)
+# nfs
+genfscon nfs /				gen_context(system_u:object_r:nfs_t,s0)
+genfscon nfs4 /				gen_context(system_u:object_r:nfs_t,s0)
+genfscon afs /				gen_context(system_u:object_r:nfs_t,s0)
+
+genfscon inotifyfs /			gen_context(system_u:object_r:inotifyfs_t,s0)
+genfscon hugetlbfs /			gen_context(system_u:object_r:hugetlbfs_t,s0)
+
+
+# unsupported filesystems
+genfscon rootfs /			gen_context(system_u:object_r:unsupported_fs_t,s0)
+genfscon debugfs /			gen_context(system_u:object_r:unsupported_fs_t,s0)
+genfscon eventpollfs / 			gen_context(system_u:object_r:unsupported_fs_t,s0)
+genfscon futexfs / 			gen_context(system_u:object_r:unsupported_fs_t,s0)
+genfscon bdev / 			gen_context(system_u:object_r:unsupported_fs_t,s0)
+genfscon nfsd / 			gen_context(system_u:object_r:unsupported_fs_t,s0)
+genfscon rpc_pipefs / 			gen_context(system_u:object_r:unsupported_fs_t,s0)
+genfscon binfmt_misc / 			gen_context(system_u:object_r:unsupported_fs_t,s0)

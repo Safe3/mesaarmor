@@ -1,0 +1,1179 @@
+\documentclass{article}
+\title{SPDL仕様書 ver 2.1.}
+\author{Yuichi Nakamura \thanks{himainu-ynakam@miomio.jp}}
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+これは、SPDL(Simplified Policy Description Language(単純化ポリシ設定言語))
+の設定要素の解説書です。
+SPDLの設定要素を詳しく知らなくても、ポリシ自動生成ツール等により設定を行
+うことはできますが、生成された設定の意味を知る際に有効なドキュメントかと
+思います。
+
+
+\section{概要}
+seeditのポリシーファイル, Simplified Policy(/etc/seedit/policy)は、SPDLという書式で書かれています。
+SPDLコンパイラ(seedit-converterコマンド。seedit-loadコマンドの中で呼び出
+されます)によって、SPDLは普通のSELinuxのポリシー書式に変換され、設定が反映さ
+れます。
+
+\subsection{機能}
+SPDLの主な機能は、ラベルの隠蔽（パス名ベースの設定）と、パーミッションの
+絞りこみです。
+\begin{itemize}
+ \item ラベルの隠蔽\\
+       通常のSELinuxでは、ラベルをリソースに付与し、ラベルを使って
+       設定する必要があります。ラベルの管理、ラベルとリソースの対応付け
+       の把握が繁雑でした。一方、
+       SPDLでは、ラベルは隠蔽されています。ファイル名やポート
+       番号などのリソース名を指定して設定できます。
+
+ \item パーミッションの絞りこみ\\
+       SELinuxには、数百のパーミッションが存在していました。一方SPDLでは、
+       パーミッションを除去したり、統合することによって、パーミッション
+       の数を絞りこんでいます。セキュリティ上の影響が極力少なくなるよう
+       配慮し、絞りこんでいます。\\
+       「パーミッション除去」とは、そのパーミッションが全ドメインに許可
+       されるようにし、実質そのパーミッションに関するアクセス制御が働か
+       ないようにすることです。\\
+       「パーミッション統合」は、複数のパーミッションを一つのパーミッショ
+       ンとして扱うことです。どんなパーミッションが除去され、統合されて
+       いるのかは、
+       http://seedit.sourceforge.net/doc/permission\_integrate/にありま
+       す。
+\end{itemize}
+
+
+\subsection{SPDLの設定要素の概要}
+SPDLは、次のような設定を行うことができます。
+\begin{itemize}
+ \item アプリケーションへのドメイン付与\\
+       ドメインを割り当てるには、SELinuxのドメイン遷移を設定する必要があ
+       ります。ドメイン遷移の設定には、２種類の要素が用意されています。\\
+       {\it domain\_trans}という諸式は普通のドメイン遷移の諸式です。\\
+       {\it program}は、簡略版の書式です。
+
+ \item RBAC\\
+       RBACをサポートしています。{\it role}, {\it user}文を使うことで設
+       定できます。
+ \item ファイルアクセス制御\\       
+       {\it allow/deny} 文は、通常ファイルへのアクセス制御設定です。デバ
+       イスファイル関連としては、 {\it allowdev}文があります。{\it
+       allowtmp}は、一時ファイルの保護に使います。
+ \item ネットワークアクセス制御\\
+       {\it allownet}文で設定できます。
+ \item IPC(プロセス間通信)の制御\\
+       {\it allowcom}文で、IPCおよびシグナルのアクセス制御設定ができます。
+ \item Keyのアクセス制御\\
+       {\it allowkey}文は、プロセス毎の鍵領域のアクセス制御に使います。
+ \item その他の特権\\
+       その他の、重大なOSの操作については、{\it allowpriv}文で設定します。
+\end{itemize}
+
+\subsection{デフォルト拒否}
+ドメインは、デフォルトでは、全て拒否されます。
+
+\subsection{用語}
+\begin{itemize}
+\item ドメイン \\
+ ドメインは、SELinuxと同じです。ドメインは、プロセスにドメイン遷移で割り
+      当てられます。
+\item ロール\\
+ SPDLのロールは、単純化されています。ユーザシェルに付与されるドメインと
+      同じ意味です。SPDLでは、アクセス制御設定をロールに対して行いますが、
+      実際は、ユーザシェルのドメインに対して権限が与えられています。例を
+      見てみましょう。sysadm\_rロールに対して許可された権限は、ログイン
+     後のユーザーシェルのドメインsysadm\_tに許可されます。\\
+      SPDLから生成されるSELinuxのポリシでは, {\it role 全てのロール 全て
+      のタイプ;}のような設定がされています。
+
+\item 非制限(unconfined)ドメイン\\
+      unconfinedドメインとは、全ての権限が許可されたドメインのことをいい
+      ます。つまり、このようなドメインが付与されたプロセスは実質SELinux
+      のアクセス制御を受けません。{\it allowpriv all;}と設定されたドメイ
+      ンはunconfinedドメインとなります。
+\end{itemize}                  
+
+\section{SPDLによる設定の構造}
+設定は、「セクション」という単位で構成されます。
+セクションとは、 $\{$ 　 $\}$で囲まれた領域のことです。
+
+一つのドメイン・ロールに
+対して、セクションが一つ存在し、セクションの中で、ドメイン，ロールに対す
+る設定がなされます。
+
+\subsection{セクションの構造}
+
+$\{$  (セクションの開始)\\
+$domain/role$  (ドメイン、ロールの宣言。一つのドメイン、ロールしか宣言で
+きない。) \\
+$users$  (ロールの設定の時のみ有効。)\\
+$domain\_trans$|$program$ (ドメイン付与の設定)\\
+$allow/deny$|$allowxx$  (ファイルやネットワークなどへのアクセスを許可)\\
+$\}$  (セクション終わり)\\
+
+\section{他ファイルの設定を流用:include}
+{\it include}を使うことで、他ファイルの設定を流用することができます。
+書式は以下です。
+include {\it filename};
+filenameの内容が、そのまま設定されます。デフォルトでは、filenameは、
+/etc/seedit/policy/includeからのパスです。seedit-converterの-Iオプション
+でパスを帰ることもできます。
+
+
+\section{ドメイン、ロールの宣言}
+\subsection{ドメインの宣言:domain}
+\begin{enumerate}
+ \item 書式 \\
+      domain {\it domain name} ;
+ \item 意味\\
+       ドメインを宣言します。セクション中の設定は、ここで宣言したドメイ
+       ンに対してなされることになります。
+ \item 制約\\
+　{\it domain name}は、必ず {\it \_t}で終わる名前である必要があります。
+       また、一つのセクション中で2つのドメインの宣言はできません。
+\end{enumerate}
+
+\subsection{ロールの宣言:role}
+\begin{enumerate}
+ \item 書式\\
+    role {\it  role name } ;
+ \item 意味\\
+     ロールを宣言します。ロールを使えるユーザは次の{\it user}文で行いま
+       す。
+ \item 制約\\
+       {\it role name}は、{\it \_r}で終わる必要があります。一つのセクショ
+       ン中では１度しか記述できません。
+\end{enumerate}
+
+\section{RBACの設定:user}
+\begin{enumerate}
+ \item 書式\\
+       user {\it user name};
+ \item 意味\\
+       ロールを使えるユーザを列挙します。
+ \item 例\\
+       \{\\
+       role user\_r;\\
+       user root;\\
+       user ynakam;\\
+       ....\\
+ユーザrootとynakamがuser\_rロールを使えることを意味します。
+\item 制約\\
+　ロールが宣言されたセクションでしか使えません。
+
+\end{enumerate}
+
+\section{ドメイン遷移}
+SELinuxでは、ドメインを付与するためにドメイン遷移を使います。SPDLは、
+このドメイン遷移を詳細に設定するdomain\_trans文および単純設定するprogram文
+をサポートしています。
+
+\subsection{domain\_trans}
+\begin{enumerate}
+ \item 書式\\
+    domain\_trans {\it parent domain} {\it filename-of-entrypoint};
+ \item 意味\\
+    {\it parent domain}のドメインで動作しているプロセスが、 {\it
+       filename-of-entrypoint}実行ファイルを実行すると、ドメインが割り当
+       てられます。 {\it parent domain}および {\it
+       filename-of-entrypoint}は、カンマ区切りで列挙可能です。
+ \item 例\\
+\begin{verbatim}
+{
+   domain httpd_t;
+   domain_trans initrc_t /sbin/httpd;
+...
+\end{verbatim}
+    initrc\_tドメインで動作するプロセスが、/sbin/httpdを実行すると、
+       /sbin/httpdには、httpd\_tドメインが割り当てられます。
+ \item 高度な設定\\
+       Dynamic domain transitionも設定可能です。 以下のように{\it
+       filename-of-entrypoint}を省略します。\\
+
+       \{\\
+       domain httpd\_t;\\
+       domain\_trans  initrc\_t;\\
+       
+       initrc\_tからhttpd\_tへのdynamic domain transitionが許可されます。
+
+\end{enumerate}
+
+\subsection{単純なドメイン付与:program}\label{sec:program}
+\begin{enumerate}
+ \item 書式\\
+    program {\it path-to-program};
+ \item 意味\\
+        {\it path-to-program}が、コマンドラインから起動されたり、
+       /etc/init.dから起動された時にドメインを割り当てる書式です。\\
+       正確に言うと、unconfinedドメインから起動された時、ドメインが割り
+       当てられます。\\
+       しかし、認証を伴うプログラムからドメインを割り当てる設定は、これ
+       ではできません(su,login,sshdなど)。認証を伴うプログラムに使うドメ
+       イン一覧は、converter.confの authentication\_domainフィールドで列
+       挙されています。\\
+ \item 例\\
+1)
+\begin{verbatim}
+{
+domain httpd_t;
+program /usr/sbin/httpd;
+}
+
+コマンドラインまたはシステム起動スクリプトから/usr/sbin/httpdを起動した
+		ら、/usr/sbin/httpdにはhttpd\_tドメインが割り当てられま
+			す。
+\end{verbatim}
+ \item 注意\\
+       これは、unconfinedドメインが存在するポリシーのために用意された書
+       式です。unconfinedドメインが存在しない場合は、意味がなくなります。\\
+       また、RBACが有効な場合は、sysadm\_rロールのシェルから起動した場合
+       のみ、ドメインが割り当てられます。sysadm\_rはunconfinedドメインだ
+       からです。
+\end{enumerate}
+
+
+\section{通常ファイルのアクセス制御:allow/deny}
+\subsection{allow}\label{section:allow}
+ \begin{enumerate}
+  \item 書式
+	\begin{enumerate}
+	 \item allow {\it filename} $\mid$ {\it label} [r],[w],[x],[s],[o],[t],[a],[c],[e],[dx];
+	\end{enumerate}
+  \item 意味\\
+	\begin{enumerate}
+	 \item  ファイルへのアクセスを許可します
+	\end{enumerate}
+  \item ファイル名の指定\\
+	\begin{itemize}
+	 \item ワイルドカード\\
+	       {\it filename}の部分には、 {\it directory}/* and {\it
+	       directory}** のような指定ができます。  例えば、/var/* は、
+	       /var直下の全てのファイルを意味します。/var/** は、/var直
+	       下の全てのファイルに加え、/varのサブディレクトリの以下に
+	       ある、全てのファイル、ディレクトリを意味します。
+	 \item ホームディレクトリ\\
+	        \textasciitilde ~ から始まるファイル名は、ユーザーのホー
+	       ムディレクトリ（/root以外）を表します。
+	       例えば、
+ ~/public\_html means, /home/{\it 全てのユーザ}/public\_htmlを表します。\\
+	       ただし、ロールの設定の場合は、意味が異なります。そのロー
+	       ルを使うことができるユーザーのホームディレクトリだけを表
+	       します。例えば、
+	       \begin{verbatim}
+		{
+		role staff_r;
+		user ynakam;
+		user himainu;
+		allow ~/** r,w;
+		}
+	       \end{verbatim}
+	       では、staff\_rは、/home/ynakam,/home/himainuへのアクセス
+	       のみが許可されています。
+	\end{itemize}
+
+  \item パーミッションの意味
+  \begin{itemize}
+   \item r(Read)\\
+	 ファイルの読み込み
+   \item w(Write)\\
+	 ファイル、ディレクトリの書き込み、生成、消去、追記。
+	 ただし、デバイスファイルに関する操作は許可されません。デバイス
+	 ファイルに対してもアクセスを許可したい場合は、allowpriv
+	 devcreate(デバイスの生成のみが許可されます)またはallowdevを使う必要があります。
+   \item x(eXecute)\\
+	 ファイルの実行
+   \item s(Search)\\ 
+	 ディレクトリの中身の閲覧。ファイルに対して設定しても何も起こり
+	 ません。ディレクトリ以下のファイルの読み込みを許可したい場合はr
+	 と一緒に設定します。
+  \end{itemize}
+  \item 例\\
+	\{\\
+	domain httpd\_t;\\
+	...\\
+	allow /var/www/** r,s;\\
+	....\\
+	
+	httpd\_tは、/var/www以下のファイル、ディレクトリをサブディレクト
+	リを含めて全て読み込みを許可されています。
+  \item 詳細パーミッション\\
+	s,r,x,wパーミッション以外にも、o,t,a,c,eというパーミッションを使
+	うこともできます。これらは、wパーミッションを分割したものです。
+	\begin{itemize}
+	 \item o: Overwrite\\
+	       ファイルの上書き保存のみを許可します。ファイルの消去や生
+	       成は許可されません。
+	 \item t: seTattr\\
+	       ファイルの属性（所有者など）を変更します。なお、SELinuxのラベル情報は変更できません。
+	 \item a: Append\\
+	       ファイルを追記モードでオープンすることを許可します。
+	 \item c: Create\\
+	       ファイルの生成を許可します。
+	       Allow to create file.
+	 \item e: Erase\\
+	       ファイルの消去を許可します。
+	\end{itemize}
+  \item ドメイン遷移パーミッション:dx\\
+	{\it dx} という特殊なパーミッションが用意されています。もし、ド
+	メインがそのプログラムに対して定義されていれば、そのプログラムに
+	新たなドメインが付与されて動作します。
+	\begin{verbatim}
+例:
+        {
+	  domain httpd_t;
+          program /usr/sbin/httpd;
+          allow /var/www/cgi-bin/test.cgi r,s,dx;
+        }
+        {
+	  domain cgi_t;
+          program /var/www/cgi-bin/test.cgi;
+          allow ............
+        }
+	\end{verbatim}
+	この場合 httpd\_tドメインは、test.cgiに対してdxパーミッションが
+	許可されています。test.cgiには、cgi\_tというドメインを割り当てる
+	設定がされているため、cgi\_tドメインが割り当てられます。\\
+	なお、通常の「x」パーミッションですと、test.cgiは、httpd\_tのま
+	ま動作してしまいます。         
+	program /var/www/cgi-bin/test.cgi;という設定は、unconfinedドメイ
+	ンから起動した場合にcgi\_tドメインを割り当てる設定であるため、httpd\_t
+	から起動した場合には、cgi\_tは割り当てられません。
+
+  \item ホームディレクトリについての制限事項\\
+	個々のユーザーのホームディレクトリにdenyを記述しても無視されます。\\
+	例：
+	\begin{verbatim}
+deny /home/ynakam/public_html;
+	\end{verbatim}
+	
+ \end{enumerate}
+
+\subsection{deny}
+\begin{enumerate}
+ \item 書式\\
+ deny {\it filename};
+ \item 意味\\
+allow文に対する制約を記述したり、allowをキャンセルするのに使われます。
+ \item 例
+\begin{enumerate}
+ \item 例１ 1: 制約の記述\\
+   \begin{verbatim}
+*constraintsという名前のファイル名
+deny /etc/shadow;
+
+*httpd_t.spというファイル
+{
+domain httpd_t;
+include constraints;
+allow /etc/* r,s; 
+}
+   \end{verbatim}
+{\it include constraints;}では、constraintsという名前のファイルで行った
+       設定、つまり、deny /etc/shadowが設定されます。以下と同じ意味です。
+       \begin{verbatim}
+{
+domain httpd_t;
+include constraints;
+deny   /etc/shadow;
+allow /etc/* r,s;
+}
+       \end{verbatim}
+これの意味ですが、httpd\_tドメインは、/etcの下にあるファイルに対して読み
+       込みができます。
+しかし、/etc/shadowにはアクセスはできません。\\
+/etc/shadowにアクセスするには、
+{\it allow /etc/shadow r,s;} と、明示的に書かねばなりません。denyは、設
+       定ミスを防ぐのに役に立ちます。
+
+ \item 例2: allowのキャンセル\\
+\begin{verbatim}
+{
+domain httpd_t;
+allow /etc/* r,s;
+deny /etc;
+\end{verbatim}
+{\it allow /etc/* r,s;} は、deny /etc;を記述することでキャンセルされます。
+
+\end{enumerate}
+\end{enumerate}
+
+\subsection{allowとdenyで衝突するルールが記述された時}
+ \begin{enumerate}
+  \item allowがコンフリクトしたらORを取る \\
+	\begin{itemize}
+	 \item 例
+	       \begin{verbatim}
+domain foo_t;
+allow /var/** r;
+allow /var/** s;
+	       \end{verbatim}
+foo\_t は /var/**に、 r,sが許可されます。
+	       \begin{verbatim}
+domain foo_t;
+allow /var/run/* r;
+allow /var/run/** w;
+	       \end{verbatim}
+foo\_tは、/var/run直下のファイルにrパーミッションが許可されます。
+一方、/var/run以下のファイル・ディレクトリに対し、サブディレクトリ含めて
+	       wパーミッションが許可されます。
+
+  \item 親ディレクトリ、子ディレクトリで衝突した場合
+	       \begin{verbatim}
+domain foo_t;
+allow /var/** r;
+allow /var/run/** w;
+	       \end{verbatim}
+foo\_tは、/var以下にrパーミッションが許可されますが、
+/var/run以下についてだけは、wパーミッションが許可されます。
+	\end{itemize}
+
+  \item allow/denyが衝突したら、前にされていた設定を打ち消し\\
+       \begin{itemize}
+	  \item 例：
+		\begin{verbatim}
+domain foo_t;
+allow /foo/* r,s;
+deny  /foo/* ;
+		\end{verbatim}
+		{\it allow /foo/* r,s}が打ち消されます。
+		\begin{verbatim}
+domain foo_t;
+deny  /foo/* ;
+allow /foo/* r,s;
+		\end{verbatim}
+		{\it deny /foo/* }が打ち消されます。
+
+		\begin{verbatim}
+domain foo_t;
+allow  /foo/bar/** r,s;
+deny   /foo/** ;
+		\end{verbatim}
+		{\it allow /foo/bar/** r,s}が打ち消されます。
+
+	\item 例外\\		
+		\begin{verbatim}
+domain foo_t;
+deny  /foo/bar/**;
+allow /foo/** r,s;
+		\end{verbatim}
+		{\it deny /foo/bar/**} は打ち消されません。 {\it not}
+		cancelled. denyをキャンセルするには、常にdenyされたディ
+		レクトリを直接指定したallowを書く必要があります。(今回の
+		場合 {\it allow /foo/bar/** r,s;}のように書く必要があり
+		ます)
+       \end{itemize}
+ \end{enumerate}
+
+\subsection{特殊なファイル}
+以下のファイルに対するアクセス制御は特殊な扱いになっています。
+\begin{enumerate}
+ \item  /dev/tty* /dev/pts /dev/ptmx, /dev/vcs*,/dev/vcsa*\\
+	これらは端末に関するファイルですが、allowを書いても何も起こりません。これらのファイ
+	ルへのアクセスは、allowdev文で行うようになっています。
+ \item  /proc, /sysfs, /selinux, /dev/tmpfs\\
+	これらのファイルに対する設定は、何も起こりません。内部的なことを
+	いうと、SELinuxは、これらのファイルがマウントされているファイル
+	システムをサポートしていないためです。allowfsを使うことで一部設
+	定することはできます。また、/selinux以下へのアクセス制御は
+	allowpriv getsecurity, setsecurityで制御できます。
+\end{enumerate}
+
+
+\subsection{リンクに関する注意事項}
+\subsubsection{シンボリックリンクの扱い}
+　パスの途中にシンボリックリンクが含まれるようなファイル名は、無視されま
+ す。
+     例えば、 \\
+       allow /etc/init.d/httpd r;\\
+       は無視されます。(init.dは、rc.d/init.dへのシンボリックリンクだか
+ らです)。
+\subsubsection{ハードリンクの取扱い}
+
+       Linuxシステムでは、ハードリンクを使うことで、ファイルの中身を複数
+       のファイル名で参照することができます。ハードリンクは、デフォルト
+       ではほとんど使われていないため、以下の内容を気にする場面はほとん
+       ど現れませんが、セキュリティ上知っておいたほうがいいでしょう。\\
+       SPDLでは、ハードリンクは以下のルールで処理されます。\\
+       {\it ファイルの中身が複数のハードリンクで参照される場合、元々存在
+       したファイル名を記述する必要がある。それ以外のファイル名が指定さ
+       れた場合は無視される。}\\
+       例えば、/etc/shadow と/var/chroot/etc/shadowがハードリンクされて
+       いたとします。/etc/shadowが元々存在していたとすると、/etc/shadow
+       (と/var/chroot/etc/shadow)の中身を見るためには、allow
+       /etc/shadow rと記述する必要があります。allow /var/chroot/etc/shadow r
+       と記述しても無視されます。\\
+       ハードリンクが複数存在する場合、どのファイル名を「元々存在するファ
+       イル名」とするかの基準が気になるところです。以下の基準で
+       「元々存在するファイル名」が判定されます。以下で出てくる例では、
+       /etc/shadow, /var/shadowがハードリンクされたファイルだと仮定しま
+       す。\\
+       \begin{enumerate}
+	\item 全ポリシ中で、一つのファイル名に対する設定しか書かれていな
+	      い場合、そのファイル名が「元々存在するファイル名」になりま
+	      す\\
+	      例: allow /etc/shadow rがある場所で記述されているとします。
+	      そして、/var/shadowを使った設定はどこにも記述されていない
+	      とします。この場合は、/etc/shadowが、元々存在するファイル
+	      名として取り扱われます。
+	\item 複数のファイル名に対する設定が記述されていた場合、名前が一
+	      番若いものが、「元々存在するファイル名」になります。\\
+	      例: allow /etc/shadow r,allow /var/shadow r; という設定が
+	      記述されていたとします。この場合、「/etc/shadow」が、「元々
+	      存在するファイル名」になります。なぜなら、/etc/shadowのほ
+	      うが名前が若いからです。
+	\item ハードリンクされたファイル名を使った設定がどこにも記述され
+	     てないときは、所属ディレクトリ名を比較して、所属ディレクト
+	      リ名が最も大きいものが「元々存在するファイル名」となります。\\
+	      例: /etc/shadow, /var/shadowを使った設定がどこにも記述され
+	      ていない場合、/var/shadowが「元々あるファイル名」となりま
+	      す。なぜなら、/var/ $>$  /etcだからです。
+       \end{enumerate}
+       しかし、どのハードリンク名が「元々存在するファイル名」か分からな
+       い場合は、全ての名前を使う手もあります。例えば、
+\begin{verbatim}
+allow /etc/shadow r;
+allow /var/shadow r;
+\end{verbatim}
+のように記述した場合、どちらかの設定は無視されるだけで、無害です。\\
+       以上のハードリンクの取り扱いは、パス名ベースのセキュリティの「抜
+       け穴」を防ぐために必要なものです。
+       この取り扱いがなかったとすると、
+       例えば、/etc/shadowのハードリンクが、なんらかの手で
+       /var/www/html/shadowに作られてしまうと、Webサーバーから
+       /etc/shadowの中身を覗けてしまうことになります。これを防ぐために、
+       ハードリンクされたファイルの中身にアクセスするには、「一つのファ
+       イル名」しか使えないようにする必要があるわけです。パス名ベースの
+      セキュリティの問題点については、\\
+       http://securityblog.org/brindle/2006/04/19 \\
+       に詳しいです。
+
+\section{デバイスファイルのアクセス制御:allowdev}
+\subsection{allowdev(1)}
+ デバイスファイルの扱いには注意を要します。なぜなら、デバイスファイルは、
+ カーネルのリソースへのインターフェースとなっているからです。デバイスファ
+ イルが、ハードディスクのデバイスドライバに関連付けられていたら、そのデ
+ バイスファイルへの読み書きは、ディスクの破壊や情報漏洩につながります。
+ \\
+ ここで紹介するallowdevにより、デバイスファイルへのアクセス制限をするこ
+ とができます。
+\begin{enumerate}
+ \item 書式
+      \begin{enumerate}
+       \item allowdev -root {\it directory};
+      \end{enumerate}
+ \item 意味\\
+       デフォルトでは、{\it allow}を使ってファイルへのアクセスを許可した
+       としても、デバイスへのアクセスは許可されません。
+       デバイスへのアクセスを許可するには、この書式を使って、デバイスの
+       位置を明示的に指定しておく必要があります。
+       {\it directory}以下が、デバイスを格納するディレクトリとみなされ、
+       そのディレクトリ以下に対するallowを記述すると、デバイスへのアクセ
+       スが許可されます。
+
+ \item 例\\
+       \begin{verbatim}
+	{ 
+	domain httpd_t;
+	allow /dev/* r,w;
+       \end{verbatim}
+       httpd\_tは、/dev以下の普通のファイルにはr,wアクセスできるものの、
+       デバイスに対しては、アクセスできません。
+       \begin{verbatim}
+	{ 
+	domain httpd_t;
+	allowdev -root /dev;
+	allow /dev/* r,w;
+       \end{verbatim}
+       httpd\_tは、/dev以下のファイルおよびデバイスファイルにr,wアクセス
+       できます。\\
+       ただし、{\it w}を指定しても、デバイスの生成、消去は{\it allowpriv
+       devcreate }が記述されない限り、許可されません。
+\end{enumerate}
+
+\subsection{allowdev(2)(RBAC有効時のみ）)}
+/dev/tty*デバイスファイルは、端末デバイスです。/dev/pts以下のデバイスは、
+疑似端末です。端末デバイスは、ローカルログインの端末を現し、疑似端末は、
+Xやsshログインの端末を表します。これらのデバイスと端末の関連付けはログイ
+ン時に行われます。\\
+　もし、他のログインユーザの端末デバイスに書き込みが行えるとしたら、その
+ユーザの端末に余計な文字列を表示することで、他のユーザの作業を妨害できて
+しまいます。\\
+ SELinuxでは、端末や疑似端末デバイスにログインユーザのロールに応じたラベ
+ ルが割り当てられます。ここで紹介するallowdevは、ラベルを隠蔽しつつ、端
+ 末のアクセス制御を実現します。
+
+\begin{enumerate}
+ \item 書式
+      \begin{enumerate}
+       \item allowdev -pts|-tty|-allterm open;
+       \item allowdev -pts|-tty|-allterm {\it role} [r],[w];  
+       \item allowdev -pts|-tty|-allterm {\it role} admin;
+      \end{enumerate}
+ \item 意味\\
+       -ttyは端末デバイス、 -ptsは疑似端末、-alltermsは端末、疑似端末両
+       方。
+       \begin{enumerate}
+	\item これは、通常はロールの設定時に使われます。ロールに対して、
+	      自分専用の端末を持つことを許可されます。
+	      
+	      内部的な動作ですが、これを設定しておくと、ログイン時にログインプログラムによっ
+	      て、デバイスにロールに応じたラベルが付与されるようになりま
+	      す。{\it {\it role prefix}}\_tty\_device\_tとい
+	      う名前のラベルです。
+	\item  他ロール専用の端末に、読み込みや書き込みのアクセス権限を
+	      与えます。
+	\item 端末の管理権限を与えます。つまり、端末のラベルを変更したり、
+	      消去したりする権限です。
+       \end{enumerate}
+       \item 特別なロール名\\
+       {\it role}部分には、以下のような特別な名前が使えます。
+       \begin{itemize}
+	\item general\\
+	      ログインプログラムによってラベル付けが行われる前の端末を指
+	      定します。ちなみに、ラベル付け前は、devtty\_t
+	      tty\_device\_t, devpts\_t, ptmx\_tといったラベルがついてい
+	      ます。これらの端末に対するアクセスを許可しても害はありませ
+	      ん（adminパーミッションは除く)
+	\item all\\
+	      全てのロールの端末を指定します。
+	\item vcs\\
+	      allowdev -ttyのみに使える指定です。これは、vcsファイル
+	      (/dev/vcs*, /dev/vcsa*)を指定します。vcsファイルとは、端末
+	      のスクリーンショットを提供するものです。
+       \end{itemize}
+
+\end{enumerate}
+
+\section{SELinuxがサポートしないファイルシステムへのアクセス制御:
+ allowfs}
+ SELinuxは、拡張属性(xattr)をサポートするファイルシステムに対しては、ファ
+ イル単位でアクセス制御を行うことが可能です。ext3,ext2,xfsなどはxattrを
+ サポートしていますが、サポートしないファイルシステムもあります。
+ こういったファイルシステムに対しては、個々のファイル単位のアクセス制御
+ はできません。「ファイルシステムのファイル全体」に対するアクセス制御に
+ なってしまいます(procファイルシステムについてはもう少し細かくできますが)。allowfsはそういったファイルシステム用の設定要素です。
+
+\begin{itemize}
+ \item 書式
+       \begin{enumerate}
+	\item  allowfs {\it name\_of\_filesystem} [s],[r],[x],[w],[o],[a],[t],[c],[e];\\
+	      {\it name\_of\_filesystem}については、 {\it tmpfs sysfs autofs usbfs cdfs romfs
+	       ramfs dosfs smbfs nfs proc proc\_kmsg proc\_kcore
+	       xattrfs}という文字列を利用可能。
+       \end{enumerate}      
+ \item 意味\\
+       \begin{enumerate}
+
+	\item 指定されたファイルシステムにあるファイルへのアクセスを許可
+	      します。例えば、 {\it
+	      allowfs sysfs s,r;}は、sysfsファイルシステム上のファイル
+	      (普通は/sysfs以下)に
+	      対して、s,rを許可します。 
+	      アクセス拒否ログの中に、{\it filesystem名}\_tという名前の
+	      タイプを発見したら、allowfsを使う必要があるかもしれません。
+	      例えば、{\it sysfs\_t への読み込みが拒否された}というログ
+	      を発見したら、{\it allowfs sysfs s,r;}と設定する必要がある
+	      でしょう。もっとも、自動生成コマンドがやってくれる仕事です
+	      が。		
+       \end{enumerate}
+       
+
+ \item {\it name\_of\_filesystem}についての注意点
+       \begin{itemize}
+	\item procファイルシステム\\
+	      procファイルシステムについては、もう少し細かくできます。
+
+	      proc\_kmsg とすると、/proc/kmsgを指定でき、proc\_kcoreとす
+	      ると、/proc/kcoreを指定できます。 proc\_pid\_selfとすると、
+	      /proc/pidにある、自ドメインに属するプロセス情報です。
+ proc\_pid\_otherは他ドメインに属するプロセス情報全てです。
+	\item xattrfs\\
+	      これは、xattrをサポートするファイルシステムにも関わらず、
+	      SELinuxのラベルを使うように設定されていないファイルシステ
+	      ムを意味します。例えば、USBメモリを非SELinuxマシンでフォー
+	      マットして、マウントした場合が相当します。
+	\item cdfs\\
+	      iso9660およびudfファイルシステムを意味します。
+	\item dosfs\\
+	      vfat, fat, ntfsを意味します。
+	\item smbfs\\
+	      cifs, smbfsを意味します。
+       \end{itemize}
+\end{itemize}
+
+\section{一時ファイルへのアクセス制御:allowtmp}
+\subsection{なぜallowtmpが必要?}
+{\it allowtmp} は、一時ファイルのアクセス制御のために用意された設定要素
+です。その前に、なぜそんなものが必要なのかを見ていきましょう。
+SELinuxは、内部的にファイルをファイル名ではなく、iノードで識別しています
+(正確にはiノードに関連づけられたタイプラベル)。
+seeditは、ファイル名を指定して設定を行いますが、iノード番号が変わって
+しまう、もしくは設定時にファイルが存在しない場合(iノード番号が設定時に分
+からない)は、うまく動かなくなります。
+/var/run, /tmp, /var/tmp等には、そのようなファイルがたくさんあります。\\
+一つ例を見てみましょう。
+\begin{verbatim}
+domain httpd_t
+allow /var/run/httpd.pid r,w;
+\end{verbatim}
+設定時には、httpd\_tは、/var/run/httpd.pidに対するr,wパーミッションが許
+可されています。しかし、httpdを再起動すると、httpd.pidファイルは消去され、
+また同じ名前のファイルが生成されます。iノード番号も変わって
+しまっています。そうなると、seedit側では、新しく生成されたファイルを認識
+できなくなり、httpd\_tはhttpd.pidにアクセスできなくなってしまいます。\\
+次の例です。/tmpにランダムにファイルを生成する場合問題になります。
+プログラムA（a\_tドメインで動作する）、プログラムB（b\_tドメインで動作す
+る）があるとします。そして、これらが、/tmp以下にランダムな名前のファイルを作成
+するとします（tmpfsシステムコールで一時ファイルを生成した場合に相当しま
+す）。
+すると、以下のような設定を書かざるをえません。
+\begin{verbatim}
+{
+domain a_t;
+allow /tmp/** r,w;
+}
+{
+domain b_t;
+allow /tmp/** r,w;
+}
+\end{verbatim}
+これは、プログラムA、Bともお互いの一時ファイルにアクセスできることを意味
+します。一時ファイルに重要な情報が書かれていたら情報漏洩に繋がります。
+
+\subsection{allowtmpとは}
+こういった問題を解決するため、SELinuxはファイルタイプ遷移という機能を持っ
+ています。ファイルタイプ遷移を分かりやすく設定するのがallowtmpです。
+ファイルタイプ遷移を使うと、「ドメインAがディレクトリBに生成したファイル」
+のようなラベルを付与し、そのラベルを使ってアクセス制御できます。\\
+例です。
+\begin{verbatim}
+domain httpd_t;
+allow /var/run r,s;
+allowtmp -dir /var/run -name httpd_var_run_t; -(a)
+allow httpd_var_run_t r,w; -(b)
+\end{verbatim}
+(a)では、httpd\_tドメインのプログラムが/var/runにファイルを生成したとき、
+そのファイルにhttpd\_var\_run\_tのようなラベルを付与します。(b)では、そ
+のラベルが付与されたファイルに読み書きできるようにしています。
+以下のような省略記法もあります。
+\begin{verbatim}
+domain httpd_t;
+allow /var/run r,s;
+allowtmp -dir /var/run -name auto r,w;
+\end{verbatim}
+「/var/runに生成するファイルに読み書き許可」と設定しています。内部的には
+先ほどの(a)(b)を設定しています。
+
+\subsection{allowtmpの書式と意味}
+\begin{enumerate}
+ \item 書式
+       \begin{enumerate}
+	\item allowtmp -dir {\it directory} -name {\it label} {\it
+	      permission};
+	\item  allowtmp -fs {\it file system name} -name {\it label} {\it
+	      permission};
+	      {\it permission}は、ファイルのものと同じです。省略して、ラ
+	      ベル付け設定のみを行うこともできます。
+       \end{enumerate}
+ \item 意味\\
+       \begin{enumerate}
+	\item ドメインが、{\it directory}ディレクトリにファイルを生成す
+	      ると、{\it label}という名前のラベルが付与されます。そして、
+	      そのラベルに対するパーミッションを {\it permission}で指定
+	      します。 {\it permission}は省略可能です。省略すると、パー
+	      ミッション設定は別途allow文を使って行うことになります。
+	\item これは、xattrをサポートしないファイルシステム上のファイル
+	      に対する設定です。今のところ、tmpfsのみのサポートとなりま
+	      す。
+	\item {\it label}の指定について
+	      \begin{itemize}
+	       \item  {\it label} が {\it auto }のときは、ラベルの名前は、
+		      自動的に名付けられます（ドメインとディレクトリ名か
+		      ら生成されます）。例えば、hoge\_tドメイン、 {\it
+		      directory} が /var/の場合は、hoge\_var\_tという名
+		      前のラベルが生成されます。
+	       \item {\it label}が{\it all} または *の時は、{\it
+		      directory}ディレクトリ以下の、allowtmp設定
+		      によりラベル付けされた全てのファイルを意味します。
+	      \end{itemize}           
+       \end{enumerate}       
+ \item 例\\
+       \begin{verbatim}
+domain httpd_t	;
+allowtmp -dir /var/run -name auto r,w;
+       \end{verbatim}
+httpd\_tが、/var/runにファイルを生成すると、httpd\_var\_run\_tというラベ
+       ルが付与され、それに対してr,wアクセスができます。
+
+\begin{verbatim}
+domain httpd_t
+allowtmp -dir /var/run -name auto r,w;
+domain named_t
+allowtmp -dir /var/run -name auto r,w;
+domain initrc_t;
+allowtmp -dir /var/run -name all r,w;
+\end{verbatim}
+
+httpd\_tが、/var/runにファイルを生成すると、httpd\_var\_run\_tというラベ
+       ルが付与され、それに対してr,wアクセスができます(named\_tなどはア
+       クセス不可)。
+named\_tが、/var/runにファイルを生成すると、named\_var\_run\_tというラベ
+       ルが付与され、それに対してr,wアクセスができます(httpd\_tなどはア
+       クセス不可)。
+initrc\_tは、上記のファイルにr,wアクセスができます。なぜなら、-name all
+       が指定されているからです。
+
+\end{enumerate}
+
+
+\section{ネットワークアクセス制御:allownet}
+{\it allownet}は、ソケット、ポート番号、NIC, IPアドレスなど、ネットワークリソース
+へのアクセス制御を設定するものです。
+
+\subsection{ポートのアクセス制御}
+\begin{enumerate}
+ \item 書式\\
+ allownet -protocol {\it protocol} -port {\it port number} {\it permission};\\
+ {\it protocol}: tcp,udpが指定できます。カンマ区切りでtcp,udpのように書
+       くこともできます。\\
+ {\it port number}: ポート番号を指定。数字および {\it -1023},{\it 1024-}
+       ,および* が指定できます。カンマ区切りで数字を列挙できます。
+ {\it permission}: {\it client} または{\it server}を指定可能。カンマ区切
+       りで列挙可能。
+ \item 意味\\
+       TCP、UDPのサーバーまたはクライアントとして、指定されたポートで通
+       信することを許可。{\it
+       -1023}というポート番号は、allownetで指定されていない1023以下のポー
+       ト番号全て。{\it 1024-}は、allownetで指定されていない1024以上のポー
+       ト全て。 *は、全てのポートを意味します。
+ \item UDPサーバの設定について注意\\52
+       allownet -protocol udp -port xxx server;のように設定すると、その
+       ドメインは、1024以上のポートを使ってクライアントとして振る舞うこ
+       とも同時に許可されます。
+ \item 例
+\begin{verbatim}
+domain httpd_t;
+# TCP80,443を使ってサーバとして振る舞う
+allownet -protocol tcp -port 80,443 server;
+# TCP,UDP3306を使ってクライアントとして振る舞う
+allownet -protocol tcp,udp 3306 client;
+\end{verbatim}
+\end{enumerate}
+
+\subsection{RAWソケットの利用}
+RAWソケットは、通信の盗聴などに利用されるため、利用を制限しなくてはなり
+ません。
+\begin{enumerate}
+ \item 書式\\
+       allownet -protocol raw use;\\
+        {\it permission}: {\it client} 、{\it server} 、 * がコンマ区切
+       り指定可能。
+ \item 意味\\
+       RAWソケットを使ったデータの受信（server)、送信(client)が許可され
+       ます。
+\end{enumerate}
+
+\subsection{NIC(netif)またはIPアドレス(node)の利用制限}
+netifやnodeの利用制限ができます。なお、デフォルトで用意されているポリシ
+では、common-relaxed.spファイルにより、全ドメインに許可されてます。
+\begin{enumerate}
+ \item 書式\\
+       \begin{enumerate}
+	\item allownet -protocol {\it protocol} -netif {\it name of NIC} {\it
+	      permission};\\
+	      {\it protocol}: tcp,udp,raw、 * がカンマ区切りで指定可能。\\
+	      {\it name of NIC}: NICの名前(lo,eth0,eth1等)がカンマ区切り
+	      で指定可能\\
+	      {\it permission}: {\it send}、{\it recv}がカンマ区切りで指
+	      定可能       
+	\item allownet -protocol {\it protocol} -node {\it address} {\it
+	      permission};\\
+	      {\it protocol}: tcp,udp,raw、 * がカンマ区切りで指定可能。\\
+	      {\it address}: {\it ipv4address}/{\it netmask} または * が
+	      カンマ区切りで指定可能\\
+	      例： 192.168.0.1/255.255.255.0。なお*は、全てのアドレスを
+	      意味します.\\
+	      {\it permission}: {\it send} または{\it recv}をカンマ区切
+	      りで指定可能。
+       \end{enumerate}
+ \item 意味\\
+       \begin{enumerate}
+	\item  NICを通してデータを送信、受信することを許可。
+	\item  IPアドレス宛にデータを送信、IPアドレスからデータを受信す
+	       ることを許可。
+       \end{enumerate}
+ \item 例\\
+
+\begin{verbatim}
+{
+domain httpd_t;
+allownet -protocol tcp  use;
+allownet -protocol tcp -port 80 server;
+allownet -netif eth0 send,recv;
+}
+--> httpd_tは80番ポートを通してサーバとして振る舞える。
+eth0を通してパケットを送受信できる。
+(lo0,eth1は使えない）
+\end{verbatim}
+\end{enumerate}
+
+\subsection{他ドメインからのソケット継承}\label{sec:socket}
+他ドメインで動作するプロセスからソケットを継承して使う権限を与えます（滅
+多にないことですが。。）
+\begin{enumerate}
+ \item  書式
+	\begin{enumerate}
+	 \item allownet -protocol {\it protocol}  -domain {\it domain} use;
+	       {\it protocol}, tcp,udpをカンマ区切りで指定可能。
+	\end{enumerate}
+
+ \item 意味\\
+	\begin{enumerate}
+	 \item 他ドメインで動作するプロセスからソケットを継承することを
+	       許可します。どのドメインから継承可能かを{\it domain}で指
+	       定します。{\it domain}として{\it self}を指定することで、
+	       自分自身が作成したソケットの利用権限を与えます(こちらはデ
+	       フォルトのポリシのcommon-relaxed.spで許可されてます)
+	\end{enumerate}
+\item 例
+\begin{verbatim}
+domain foo_t;
+# foo_tはUDPソケットをbar_tから継承可能
+allownet -protocol udp -domain bar_t; 
+\end{verbatim}
+\end{enumerate}
+\section{プロセス間通信のアクセス制御:allowcom}
+\subsection{allowcom (IPC)}
+\begin{enumerate}
+ \item 書式\\
+       allowcom -ipc$\mid$-unix$\mid$-sem$\mid$-msg$\mid$-msgq$\mid$-shm$\mid$-pipe {\it to
+       domain} [r],[w];
+
+
+ \item 意味\\
+       指定されたIPCで {\it  to domain }と通信することを許可します。{\it
+       to domain }が{\it self}の場合は、自ドメインないの通信を意味します。
+       {\it  to domain } として {\it *}とすると、全ドメインを指定します。
+       -ipcは、全種類のIPCをまとめて許可しています。\\
+       個々のIPCを制限したい場合は、以下を使えます。\\
+       -unix は、UNIXドメインソケットです。-semはセマフォです。-msgはメッ
+       セージ、-msgqはメッセージキュー、 -shmは共有メモリ、 -pipeはパイ
+       プです。
+\end{enumerate}
+
+\subsection{allowcom(シグナルの制限)}
+\begin{enumerate}
+ \item 書式\\
+       allowcom -sig {\it to domain} [c],[k],[s],[n],[o];
+ \item 意味\\
+        {\it to domain}に指定されたシグナルを送信することを許可します。\\
+       cはsigchld、 kはsigkill, sはsigstop, nはsignull, o はそ
+       の他のシグナルです。
+\end{enumerate}
+
+
+
+\section{他の特権のアクセス制御:allowpriv}
+これまで出てきた以外にも、OSにはセキュリティ上重要な操作（攻撃者にとられ
+たら危ない権限）があります。これらを制限するのがallowprivです。
+\begin{itemize}
+ \item 書式 \\
+       allowpriv {\it string};\\
+       {\it string}に権限名を書いていきます。どんな名前が指定可能かは、
+       後述します。
+ \item 意味 \\
+       {\it string}で指定した権限を許可。
+\end{itemize}
+さて、{\it string}に記述可能な権限は、以下のように分類できます。この分類
+ にそって紹介していきます。
+\begin{itemize}
+ \item POSIX capability\\
+ \item カーネル関連\\
+ \item SELinux管理操作\\
+ \item その他
+\end{itemize}
+
+
+\subsection{POSIX capability}
+ {\it cap\_}で始まる文字列は、POSIX capability(ケーパビリティ)です。
+POSIX Capabilityは、特権を分割して与えるものです。
+POSIX capabilityの詳細は、man capabilitiesを参考にしてください。
+
+\subsubsection{設定不能なPOSIX capability}
+以下のものは、設定ができないようになっています（デフォルトで許可されま
+す）。なぜなら、他のallow文と完全に重なるからです。
+\begin{itemize}
+ \item CAP\_NET\_BIND\_SERVICE\\
+       wellknownポートの利用制限ですが、allownetでもっと細かく制限できる
+       ので省略します。
+ \item CAP\_MKNOD\\
+       allowpriv devcreateと重なるので省略。
+ \item CAP\_AUDIT\_WRITE\\
+       allowpriv audit\_writeと重なるので省略。
+ \item CAP\_AUDIT\_CONTROL\\
+       allowpriv audit\_controlと重なるので省略。
+\end{itemize}
+
+\subsubsection{設定可能なcapability}
+詳細は、man capabilitiesを参照してください。
+\begin{itemize}
+ \item cap\_sys\_pacct\\
+       Configures kernel accounting(see acct(2)).
+ \item cap\_sys\_module\\
+       Allows to install kernel module.
+ \item cap\_net\_admin\\
+       Allow capability {\it CAP\_NET\_ADMIN}(Such as 
+       administrate NIC, route table). 
+ \item cap\_sys\_boot\\
+       Allow capability{\it CAP\_SYS\_BOOT}. This means allow the
+       usage of reboot system call.
+ \item cap\_sys\_rawio\\        
+       Allow capability {\it CAP\_SYS\_RAWIO}.This means usage of
+       ioperm, iopl system call and access to /dev/mem.
+ \item cap\_sys\_chroot\\
+       Allow to use chroot.
+ \item cap\_sys\_nice\\
+       Allow capability {\it CAP\_SYS\_NICE}. This means process scheduling.
+ \item cap\_sys\_resource\\
+       Allow capability {\it CAP\_SYS\_RESOURCE}. This means usage
+       of rlimit etc.
+ \item cap\_sys\_time\\
+       Allow capability {\it CAP\_SYS\_TIME}. Thie means modify
+       system clock.
+ \item cap\_sys\_admin\\
+       The same as POSIX capability {\it CAP\_SYS\_ADMIN}. This
+       permissions overlaps other permissions, so if you allow
+       this, not so serious problem. By denying this,
+       it can restrict sethostname and some ioctl operations.
+ \item cap\_sys\_tty\_config\\
+       The same as capability {\it CAP\_TTY\_CONFIG}. Change
+       keyboard configuration, and usage of vhangup call. 
+ \item cap\_ipc\_lock\\ 
+       Allow capability {\it CAP\_IPC\_LOCK}. This means to lock
+       memory.
+ \item cap\_dac\_override\\ 
+ \item cap\_dac\_read\_search \\
+ \item cap\_setuid 
+ \item cap\_setgid \\
+ \item cap\_chown \\
+ \item cap\_setpcap\\
+ \item  cap\_fowner\\
+ \item  cap\_fsetid \\
+ \item cap\_linux\_immutable\\
+ \item cap\_sys\_ptrace\\
+\item cap\_lease\\
+\item cap\_ipc\_owner\\
+\item cap\_kill\\
+
+\end{itemize}
+
+
+\subsection{カーネル関連操作}
+カーネルとの通信、管理する特権を許可します。
+       \begin{enumerate}
+	\item netlink\\
+	      netlinkソケットを使ってカーネルと通信することを許可
+	\item klog\_read\\
+	      syslog(2)システムコールを使ってカーネルメッセージを読むこ
+	      とを許可。
+	\item klog\_adm\\
+	      カーネルメッセージ出力設定の変更を許可
+	\item audit\_read\\
+	      カーネル内のauditサブシステムのステータス読み出しを許可。
+	\item audit\_write\\
+	      auditサブシステムにメッセージを送ることを許可。
+	\item audit\_adm\\
+	      auditサブシステムの設定変更を許可。
+       \end{enumerate}
+
+\subsection{SELinux管理操作}
+       Allow privileges to administrate SELinux.
+       \begin{enumerate}
+	\item relabel\\
+	      Allow to relabel all files. You must also allow
+	      getsecurity and allowpriv search.
+	\item part\_relabel\\
+	      Allow to relabel files that the domain can write. You must
+	      also allow getsecurity. 
+	\item setfscreate\\
+	      This is necessary only applications that use SELinux API(setfscreatecon).
+	\item getsecurity\\
+	      Allow to get security policy decisions, by accessing /selinux.
+	\item setenforce\\        
+	      Allow to toggle enforcing/permissive mode.
+	\item load\_policy\\                    
+	      Allow to load policy to kernel.
+	\item setsecparam\\
+	      Change performance parameter of SELinux via /selinux/avc
+	\item getsecattr\\
+	      Get security information(such as domain, stored in /proc/pid/attr) of other processes.
+       \end{enumerate}
+
+\subsection{その他}
+       Allow other privileges.
+       \begin{enumerate}
+
+	\item quotaon\\         
+	      Allow to quotaon.
+	\item mount\\         
+	      Allow to mount device.
+
+	\item unlabel\\
+	      Allow full access to unlabeled files(Files labeled as
+	      unlabeled\_t).
+
+	\item devcreate\\
+	      Allow to create device files in directory that the domain can write.
+	      Without this, a process can not create device
+	      file on a directory even it is configured writable.
+	\item setattr\\
+	      Allow to setattr to files that the domain can s
+	      access. Without this setattr permission is granted in w permission.	\item search\\
+	      Allow s permission to all files.
+	\item read\\
+	      Allow r permission to all files.
+	\item write\\
+	      Allow w permission to all files.
+	\item all\\
+       \end{enumerate}     
+
+\subsection{denypriv}
+This can be used to cancel allowpriv configuration.
+
+\section{Access control of kernel key retention service:allowkey}
+This feature is included at version  2.1 or  later.\\
+
+After Linux 2.6.18, new feature {\it kernel key retention service)} is
+included. By the feature, each process can obtain key. 
+For detail of key retention service, please refer to kernel document
+Document/keys.txt (You can look at the copy at
+http://free-electrons.com/kerneldoc/latest/keys.txt).
+allowkey controls access to key.
+This feature is effective only for FC5 or later. Cent OS does not have
+kernel key subsystem, so allowkey means nothing.\\
+
+\begin{enumerate}
+ \item Syntax\\
+       allowkey {\it domain} {\it permissions};\\
+For permissions, you can use following.\\
+v: View. Look attribute of key.\\
+r: Read. Read contents of key.\\
+W: Write. Write contents of key. \\
+s: Search. Search keyrings.\\
+l: Link. Permits key  or keyrings to be linked to.\\
+t: Set Attribute: Set attribute of key.\\
+For detail of permission, see Document/keys.txt.       
+ \item Meaning\\
+ Allow access to keys retained by {\it  domain}.\\
+For example,\\
+allowkey login\_t v,r;\\
+means, allow view and  read access to keys, obtained by process whose
+       domain is login\_t.
+
+\end{enumerate}
+
+
+
+\end{document}

@@ -1,0 +1,286 @@
+\documentclass{article}
+\usepackage{hyperref}
+\title{Specification of Simplified Policy Description Language(SPDL) ver 2.1.a\\(Update for Android).}
+\author{An Liu\\liuan03@baidu.com}
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Overview}
+Simplified policy is written in  syntax  called Simplified Policy Description 
+Language(SPDL)\footnote{\url{http://seedit.sourceforge.net/doc/2.1/spdl_spec.pdf}}.
+ SPDL compiler(seedit-converter) converts SPDL into normal SELinux policy 
+language. SPDL has not been updated to support Android since 2009. This 
+document describes change/update/addition we made to original SPDL v2.1 during 
+our effort of porting Seedit 2.2.0 to Android.
+
+\subsection{Changes to SPDL}
+We made following changes to make SPDL compatible with SEAndroid.
+\begin{itemize}
+	\item SPDL domain grammar change\\
+	SEAndroid use attribute to describe a set of domains has common behaviors. 
+	We made some changes to SPDL domain grammar and introduce the super domain 
+	keyword so that SPDL can reflect the same concept. We also change the 
+	domain keyword to solve the conflict with name ``domain''.
+	\item Socket grammar change\\
+	We modify allownet rule to support option for socket which is not available 
+	in SPDL.
+	\item Update integrated permissions\\
+	There are too many permissions in SELinux, so SPDL reduces number of 
+	permissions by removing permissions and integrating permissions. Since 
+	latest seedit (2.2.0) supports old Linux Kernel which is not fully 
+	compatible with Android's Linux Kernel. We updated some integrated 
+	permission set.
+	\item Support of SEAndroid features\\
+	When SELinux was ported to Android, there are several additional set of 
+	permissions added to support unique features of Android, such as: binder, 
+	property, Android service, Android KeyStore, DRM(Digital Right Management). 
+	We add similar permission sets to SPDL to support Android.
+\end{itemize}
+
+\section{SPDL Domain Grammar Change}
+\subsection{Original format}
+\begin{enumerate}
+	\item Syntax:\\
+	domain {\em String};
+	\item Meaning:\\
+	Declare domain. All configuration in a section is done for the declared 
+	domain.
+	\item Constraints:\\
+	Domain name {\em String} must end with {\em \_t}. This is the tradition 
+	from SELinux.
+\end{enumerate}
+
+\subsection{Updated format}
+\begin{enumerate}
+	\item Syntax:\\
+	{\bf superdomain} {\em String} ;\\
+	{\bf domain\_name} {\em String} (: superdomain (, superdomain)*)? ;\\
+	\item Meaning:\\
+	The first declaration declares superdomain. It is mapped to corresponding 
+	attribute in SEAndroid. The second declaration declares a domain which is 
+	associated with superdomains listed after ``:''. 
+	domain. 
+	\item Constraints:\\
+	To be compatible with SEAndroid, both domain and superdomain names 
+	{\em String} can end without {\em \_t}.
+	\item Example:\\
+	\begin{verbatim}
+		{
+		  #corresponding to attribute netdomain in SEAndroid
+		  superdomain netdomain;
+		  ...
+		}
+		
+		{
+		  #declare domain dhcp and associate it with netdomain
+		  domain_name dhcp : netdomain;
+		  ...
+		}
+	\end{verbatim}
+\end{enumerate}
+
+\section{Socket Grammar Change}
+
+The allownet rule does not support socket class. So we made the following 
+change.
+
+\subsection{Updated format}
+\begin{enumerate}
+	\item Syntax:\\
+	allownet -protocol socket create,rw;\\
+	allownet -protocol socket -domain name create,rw;\\
+	\item Meaning:\\
+	The first rule declares that the current domain can create or read/write 
+	the socket created by itself. The second rule declares the current domain 
+	can create a socket or read/write the socket created by other domain.
+	\item Example:\\
+	\begin{verbatim}
+	{
+	  domain_name system_server : netdomain, binderservicedomain, 
+	  mlstrustedsubject, bluetoothdomain;
+	  ...
+	  allownet -protocol socket create;
+	}
+	
+	{
+	  domain_name ppp : netdomain;
+	  ...
+	  allownet -protocol socket -domain mtp create;
+	}
+	\end{verbatim}
+\end{enumerate}
+
+\section{Integrated Permission Update}
+Seedit uses spdl\_spec.xml describe integrated SELinux permissions. We updated 
+this file to reflect the changes in SEAndroid compared with SELinux. The 
+changes can be summarized as follows:
+\begin{itemize}
+	\item update of SELinux related label from {\em security\_t} to {\em 
+	selinuxfs}
+	\item add {\em open} permission which is not available in seedit
+	\item add additional capabilities (sys\_module, set\_fcap, mac\_override, 
+	mac\_admin, syslog, wake\_alarm, block\_suspend, ) for {\em allowpriv}
+	\item add {\em getattr} permission for file read operation
+	\item additional permissions for Android features (listed in Section 
+	\ref{sec:android_change})
+
+\end{itemize}
+
+\section{Native SEAndroid rule inline support}
+Some SEAndroid rules cannot be directly translated to SPDL policy. For example, 
+Nexus 5 (hammerhead) use a macro {\em qmux\_socket} to do type transition for 
+socket file changing label from {\em qmuxd\_socket} to new label combined with 
+domain name (e.g., {\em rild\_qmuxd\_socket}). There is no SPDL rule to achieve 
+same effect. So we introduce the inline rule so that we can combine SPDL policy 
+and SEAndroid/SELinux native policy together.
+\begin{enumerate}
+	\item Syntax:\\
+	inline ``{\em SEAndroid/SELinux native policy}''\\
+	\item Meaning:\\
+	directly include SEAndroid/SELinux native policy into the final generated 
+	sepolicy file
+	\item Example:\\
+	\begin{verbatim}
+	{
+	  domain_name mediaserver : netdomain, binderservicedomain, 
+	  mlstrustedsubject;
+	  ...
+	  inline "type_transition mediaserver qmuxd_socket:sock_file 
+	  mediaserver_qmuxd_socket;"
+	  inline "allow mediaserver mediaserver_qmuxd_socket:sock_file { rename 
+	  setattr read lock create getattr write ioctl unlink open append };"
+	  ...
+	}
+	\end{verbatim}
+\end{enumerate}
+
+\section{SPDL Support for Android Features}
+\label{sec:android_change}
+\subsection{Binder}
+\begin{enumerate}
+	\item Syntax:\\
+	allowbinder {\em domain\_list} {\em binder\_permissions};\\
+	{\em domain\_list}: list of domains the current domain will call binder 
+	operations. Splitted by ``,''.\\
+	{\em binder\_permissions}: {\em m, t, c}. splitted by ','.
+	\item Meaning:\\
+	Allow current domain to initiate binder operations with target domains. 
+	{\em m} is for transfer and set\_context\_mgr, {\em t} is for transfer 
+	only, 
+	and {\em c} is for transfer and call.
+	\item Example:\\
+	\begin{verbatim}
+	{
+	  domain_name servicemanager : mlstrustedsubject;
+	  domain_trans init /system/bin/servicemanager;
+	  ...
+	  allowbinder servicemanager m ;
+	  allowbinder logd t ;
+	}
+	
+	{
+	  domain_name logd : mlstrustedsubject;
+	  ...
+	  allowbinder su c;
+	}
+	\end{verbatim}
+\end{enumerate}
+
+\subsection{property}
+\begin{enumerate}
+	\item Syntax:\\
+	allowprop {\em property\_name};
+	\item Meaning:\\
+	The rule allows the current domain to set property named as {\em 
+	property\_name}
+	\item Example:\\
+	\begin{verbatim}
+	{
+	  
+	  allowprop log. ;
+	  allowprop security.perf_harden ;
+	  allowprop service.adb.root ;
+	  allowprop service.adb.tcp.port ;
+	  allowprop sys.powerctl ;
+	  allowprop sys.usb.ffs. ;
+	}
+	\end{verbatim}
+\end{enumerate}
+
+\subsection{Android service}
+\begin{enumerate}
+	\item Syntax:\\
+	allowsvc {\em service\_name} {\em svc\_permissions};\\
+	allowsvc -name {\em attribute\_name} {\em svc\_permissions};\\
+	{\em service\_name}: target service name\\
+	{\em attribute\_name}: predefined attribute from SEAndroid\\
+	{\em svc\_permissions}: {\em a} - add a service, {\em f} - find a service, 
+	and {\em l} - list service.
+	\item Meaning:\\
+	The first rule allow the current domain to perform service related 
+	operations to the target service. The second rule allow the current domain 
+	to perform service related operations to target services associated with 
+	{\em attribute\_name}.
+	\item Example:\\
+	\begin{verbatim}
+	{
+	  domain_name untrusted_app : appdomain, netdomain, bluetoothdomain;
+	  ...
+	  allowsvc -name servicemanager l ;
+	}
+	
+	{
+	  domain_name system_server : netdomain, binderservicedomain, 
+	  mlstrustedsubject, bluetoothdomain;
+	  ...
+	  allowsvc -name system_server_service a,f ;
+	  allowsvc SurfaceFlinger f ;
+	}
+	\end{verbatim}
+\end{enumerate}
+
+\subsection{Android KeyStore}
+\begin{enumerate}
+	\item Syntax:\\
+	allowks keystore {\em keystore\_permissions};\\
+	{\em keystore\_permissions}: {\em i} - insert related permissions (insert, 
+	delete, exist, list, get\_state), {\em l} - lock related permissions (lock, 
+	unlock, reset, password, is\_empty), {\em s} - sign related permissions 
+	(sign, verify), {\em u} - user related permissions (user\_changed, grant, 
+	duplicate, clear\_uid), {\em a} - add\_auth permission.
+	\item Meaning:\\
+	The rule allows the current domain to access keystore with granted 
+	permissions.
+	\item Example:\\
+	\begin{verbatim}
+	{
+	  domain_name system_server : netdomain, binderservicedomain, 
+	  mlstrustedsubject, bluetoothdomain;
+	  ...
+	  allowks keystore l,i,u,g,s,a ;
+	}
+	\end{verbatim}
+\end{enumerate}
+
+\subsection{DRM}
+\begin{enumerate}
+	\item Syntax:\\
+	allowdrm {\em domain\_name};
+	\item Meaning:\\
+	This rule allows the current domain to use drm server with {\em 
+	domain\_name}.
+	\item Example:\\
+	\begin{verbatim}
+	{
+	  domain_name mediaserver : netdomain, binderservicedomain, 
+	  mlstrustedsubject;
+	  ...
+	  allowdrm drmserver ;
+	}
+	\end{verbatim}
+\end{enumerate}
+
+
+\end{document}

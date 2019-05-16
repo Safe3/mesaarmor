@@ -1,0 +1,96 @@
+You can develop policy for cross development.
+This is useful to write policy for embedded devices.
+
+
+0. Prepare SELinux environment in your target system.
+ You need SELinux enabled kernel, libselinux, and SELinux commands.
+ You can download libselinux from http://www.nsa.gov/selinux.
+   To compile libselinux, you might have to set __thread as NULL like below.
+   $ make ARCH=<your arch> CC=<your cross compiler> CFLAGS=-D__thread=
+  
+ You can install SELinux commands easily by using BusyBox.
+ BusyBox 1.7.1 supports SELinux commands.
+  Enable SELinux in build option and you have to enable load_policy and setfiles and getenforce, setenforce.
+  
+
+1. INSTALL
+You have to download tar ball of seedit(after 2.2.0).
+
+I assume you install seedit cross development kit under ~/seedit-cross.
+
+$ cd core
+$ make
+$ make cross-install DESTDIR=~/seedit-cross
+$ cd ..
+$ cd policy
+$ make cross-install DESTDIR=~/seedit-cross
+
+2. What is installed
+You will see following files and directories under ~/seedit-cross.
+
+* audit2spdl
+ This is audit2spdl, generate policy from log.
+ 
+
+* dynamic_contexts  
+ Here, files that are labeled by file type transision is registered.
+ Usually, you do not edit this.
+
+* seedit/            
+ Python module for audit2spdl.
+
+* seedit-cross.sh
+ Script that converts SPDL to SELinux policy.
+
+* base_policy/  and macros/
+  Files used by seedit-converter to convert SPDL to SELinux policy.
+* seedit-converter
+  Program to convert SPDL, internally called from seedit-cross.sh.
+
+* simplified_policy/
+ Least set of polcy written in SPDL.
+
+3. Writing policy
+I assume you are in ~/seedit-converter.
+
+1) Install minimum policy to target system.
+ $ ./seedit-load -cd
+ Then you will see policy_root dir.
+ in policy_root, files that can be installed under /etc/selinux/seedit
+ is generated.
+
+ Copy these files and dirs under policy_root by ssh or NFS or something else.
+
+2) Load and relabel in target system.
+ In target system, you have to load policy and relabel.
+ # load_policy
+ # restorecon -R /
+ 
+ Modify files under ./simplified_polcy.
+ These files are  written by SPDL.
+ For SPDL, see http://seedit.sourceforge.net/documentation.html
+ 
+3) When you modify policy
+ $ ./seedit-load -v
+ will convert SPDL. Conveted policy is outputted in sepolicy/ dir.
+ When you see it is OK to transfer policy to target machine,
+ $ ./seedit-load -v -d
+ policy is deployed to policy_root/ dir.
+ You can copy it /etc/selinux/seedit in your target.
+
+ In below, you  have to work on target.
+ You will see useful file /etc/selinux/seedit/fcdiff.
+ In fcdiff file, file names are listed. Files those labels may be changed are listed.
+ You can reflect policy change by following commands.
+ #load_policy
+ # restorecon -f fcdiff -R -v
+ 
+4) Supporting tools
+   You can use audit2spdl tool.
+   $./audit2spdl -i  <log file> -l 
+   will analyze log file like audit2allow, and generate policy that you need.
+   $./seedit-gui-generate-policy
+   is GUI version of audit2spdl.
+   You can create new domain  by GUI.
+   $./seedit-gui-domain-manager
+

@@ -1,0 +1,1343 @@
+\documentclass{article}
+\usepackage[dvipdfm]{graphicx}
+\usepackage[dvipdfm]{hyperref}
+
+\title{SELinux Policy Editor(SEEdit) Administration Guide 2.1}
+\author{Yuichi Nakamura \thanks{himainu-ynakam@miomio.jp}}
+\begin{document}
+\def\labelenumi{(\theenumi)}
+\maketitle
+\tableofcontents
+\newpage
+
+
+%このガイドは、「targeted」なポリシを書くためのガイドにすぎない。もっと
+%     詳細なポリシを書きたい人は別のドキュメントを参照
+
+This document is manual for SELinux Policy Editor.
+You can learn by example what is SELinux Policy Editor, and How to use.\\
+About how to install see Install Guide.
+
+\section{What is SELinux Policy Editor}
+SELinux is included in many distros, but it has been disabled by many users
+because of they feel SELinux is too difficult. 
+SELinux Policy Editor(seedit) is a tool that make SELinux easy.
+seedit is composed of Simplified Policy and utilities that handle
+Simplified Policy.The main component is Simplified Policy.
+Simplified Policy is a SELinux policy that is described by Simplified
+Policy Description Language(SPDL).SPDL resolves difficulty of SELinux. 
+SPDL simplifies SELinux by reducing number of permissions and hiding
+labels. 
+Following is a example of policy described by SPDL.
+\begin{verbatim}
+{
+domain httpd_t;
+program /usr/sbin/httpd;
+...
+allow /var/www/** r,s;
+allownet -protocol tcp -port 80 server;
+...
+}	
+\end{verbatim}
+You can easily understand what the policy says. Customize is also
+easy, because of helper tools. 
+It's original version was developed by Hitachi Software(http://www.selinux.hitachi-sk.co.jp/).
+It has been re-designed and almost re-written by Yuichi
+Nakamura(ynakam@gwu.edu) since version 1.0.
+
+
+\section{Background of SELinux}
+You have to be familiar with some SELinux background, especially
+following.
+\begin{enumerate}
+ \item TE(Type-Enforcement)\\
+       Access control model of SELinux is called TE. In TE, process is
+       given {\it domain}. SELinux decides access control based on
+       configuration file called {\it policy}. In policy , {\it What
+       kind of resource a domain is allowed to access ?} is described.
+       To identify resources, SELinux uses label called {\it type}, but
+       you do not have to be worry about {\it type}, because it is hidden
+       in seedit world.
+       By giving proper domain to application and configuring domain
+       properly, the application  have least privilege. 
+
+ \item Enforcing/permissive mode\\
+       SELinux have two mode, enforcing and permissive mode.
+       Enforcing mode is normal mode. Access control is
+       effective.        \\
+       Permissive mode is a test mode. Even if there is a access that is
+       denied by SELinux, it is not actually denied, but only written to
+       log. In permissive mode, SELinux is effectively disabled, but
+       useful to test the behavior of access control.
+       To see current mode, you can use {\it getenforce} command. To
+       switch between enforcing/permissive mode, you can use {\it
+       setenforce} command. The usage will appear later in the document.
+ \item SELinux access denial log\\
+      Access denial is outputted in /var/log/messages in Fedora
+       Core5. In Fedora Core4 or using auditd service, it is outputted
+       to /var/log/audit/audit.log.
+\end{enumerate}
+
+
+
+\section{Overview of GUI}
+You can manage SELinux from SELinux Policy Editor's GUI.
+GUI is X Window based. 
+In this tutorial, how to use GUI is shown first. You can also manage
+from command line, it is shown later.\\
+You can launch GUI from Gnome menu. Choose Application $\rightarrow$
+System tools $\rightarrow$ SELinux
+Policy Editor.
+You can also launch  GUI, by typing seedit-gui.\\
+You will see window {\it SELinux Policy Editor Control Panel}.
+In the control panel, you will see icons(you will see buttons instead of
+icons in Cent OS 4) like figure \ref{fig:controlpanel}.\\
+
+\begin{figure}[h]
+\caption{SELinux Policy Editor Control Panel}\label{fig:controlpanel}
+\includegraphics*{images/controlpanel.png}
+\end{figure}
+
+By double-clicking icon, management windows  open. 
+What you can do by double-clicking icons is summarized in following.
+\begin{itemize}
+ \item Status\\
+       The usage is shown in section \ref{sec:seedit-status}.
+       \begin{itemize}
+	\item See status of SELinux, such as SELinux mode, domains for
+	      running  process, domains for network process.
+	\item Change SELinux mode
+       \end{itemize}
+ \item Manage Domain
+       \begin{itemize}
+	\item Create new domain(section \ref{sec:createdomainGUI})
+	\item Remove domain, disable domain(section \ref{sec:unconfine:gui})
+       \end{itemize}
+ \item Generate Policy(section \ref{sec:addpolicy})
+       \begin{itemize}
+	\item Generate policy from access log
+       \end{itemize}
+ \item Edit policy(section \ref{sec:guieditor})
+       \begin{itemize}
+	\item Edit policy by text editor. The text editor has some
+	      useful features.
+       \end{itemize}
+ \item Apply policy,Relabel
+       \begin{itemize}
+	\item Load policy manually\\
+	      Policy is load automatically in GUI, but you can do it manually.
+	\item Initialize all file labels\\
+	\item Run restorecon command\\
+       \end{itemize}
+\end{itemize}
+
+
+
+\section{See what's happening on your system}
+After install, you have to see what's happening(status of SELinux) on your system.
+
+\subsection{Where is policy?}
+Simplified policy(policy described by SPDL) is located at
+/etc/seedit/policy, it is explained in later section.
+Simplified Policy is converted into SELinux
+policy by seedit-load command(inside the command, seedit-converter runs,
+it does main task), and SELinux Policy(binary SELinux policy,file\_contexts is generated).
+ Generated SELinux policy is located at
+/etc/selinux/seedit/policy, generated file\_contexts is at /etc/selinux/seedit/contexts/files.
+Usually, you do not have to care  about generated policy.
+\subsection{Default policy}
+Installed simplified policy is a targeted one. Not strict policy.
+It does not include RBAC support. Only selected daemons are protected.
+Simplified policy can support RBAC and more strict policy, but such
+policies are under construction :-) .About RBAC, it is ready to use, if
+you are interested in it, see RBAC guide.
+
+\subsection{Check status of SELinux(GUI)}\label{sec:seedit-status}
+To check status of SELinux, select {\it Status} from control panel, then
+window named{\it seedit Status} opens.
+
+\subsubsection{Check/Switch enforcing/permissive mode}\label{sec:mode}
+From {\it SELinux} tab, you can check/change mode of SELinux.
+Figure \ref{fig:status-selinux} is screenshot.
+
+\begin{figure}[h]
+\caption{Check/change SELinux mode}\label{fig:status-selinux}
+\includegraphics{images/status-selinux.png}
+\end{figure}
+
+By {\it seedit Installed? Yes}, you can know seedit is successfully
+installed.
+From {\it Current mode}, you can see current mode is permissive mode.
+You can change current mode from this box, select {\it Enforcing} and
+press {\it Apply} button.\\
+{\it Mode at boot} is mode at system boot, if it is {\it Permissive},
+after reboot, system will run as permissive mode.   It is strongly
+recommended to configure as Enforcing when you use real system.
+
+\subsubsection{See running process}
+Some processes are given domain and behavior is confined.
+
+From process$\rightarrow$Working Process, you can see domain of running
+process.
+Fig \ref{fig:status-working} is example output.
+
+\begin{figure}[h]
+\caption{Check domain of running processes}\label{fig:status-working}
+\includegraphics*{images/status-working.png}
+\end{figure}
+You can see such process as bash is unconfined,  and httpd is  confined
+by httpd\_t domain.
+
+You can also sort  result by selecting PID, Process, Domain.
+And by {\it Refresh} button, result is updated.
+
+
+\subsubsection{See network process}
+You can see status of network process(that is waiting network
+connection) from   process$\rightarrow$Network Process
+It is important to know status of network process. Because attackers use
+network process to intrude. 
+
+Fig \ref{fig:status-network} is example output.
+\begin{figure}[h]
+\caption{Check domain of network processes}\label{fig:status-network}
+\includegraphics*{images/status-network.png}
+\end{figure}
+From above, You have to be especially careful to service whose domain
+is  unconfined.
+If you create domain, you can confine it, or you may decide not to run
+the service.
+
+
+\subsection{seedit-unconfined(Command)}
+You can also do the same task from seedit-unconfined command.
+
+\subsubsection{See running process}
+You can see status of processes by seedit-unconfined -e.
+You have to be root to obtain correct result.
+Following is example output.
+\begin{verbatim}
+$ su -
+# seedit-unconfined -e
+Current SELinux mode: permissive ----(1)
+PID     Comm    Domain
+1       init    Unconfined(init_t) ---(2)
+...
+1853    sshd    Confined by sshd_t ---(3)
+\end{verbatim}
+(1) is current SELinux mode this says permissive mode. Note again that system
+    is not actually protected by SELinux in permissive mode.(2) says
+    process init is not unconfined, and given unconfined domain
+    init\_t. {\it unconfined} means: the given domain is allowed
+    everything, and effectively not protected by SELinux. (3) says sshd
+    is given sshd\_t domain and sshd\_t domain is configured to confine
+    behavior of sshd.\\
+You can also see domains by ps -eZ command, but it does not tell us what
+    kind of domains are
+    unconfined. /etc/selinux/seedit/policy/unconfined\_domains will tell
+    you what kind domains are unconfined.
+
+\subsubsection{See network process}
+You can see status of network process(that is waiting network
+connection), by seedit-unconfined -n. 
+It is important to know status of network process. Because attackers use
+network process to intrude. 
+Sample output is following.
+\begin{verbatim}
+#seedit-unconfined -n 
+Current SELinux mode: permissive ----(1)
+/usr/sbin/smbd  Unconfined(initrc_t) -- (2)
+/usr/sbin/sendmail.sendmail     Confined by sendmail_t --(3)
+...	
+\end{verbatim}
+It is like AppArmor's unconfined command. 
+(1) is current SELinux mode. After network programs are shown.
+(2) says smbd is not confined. (3) says
+sendmail is confined by domain sendmail\_t.
+
+\subsubsection{Switching enforcing/permissive mode}\label{sec:mode:command}
+After install system is permissive mode. you can switch to enforcing
+mode by following commands.
+\begin{verbatim}
+# setenforce 1
+# getenforce 
+enforcing
+\end{verbatim}
+If you want to be enforcing mode in boot time, you have to modify
+ /etc/selinux/config like following. It is strongly recommended when you
+ use real system.
+\begin{verbatim}
+SELinux=permissive
+-->
+SELINUX=enforcing
+\end{verbatim}
+
+\section{Then, what should we do?}
+Now you know SELinux status of your system(what's
+confined,unconfined). What you have to do after that can be summarized like below. 
+\begin{enumerate}
+ \item Unconfine applications\\
+   If you find application does not run due to SELinux access denial,
+       you can choose unconfine such application.It's easy. You can see how to in
+       section \ref{sec:unconfine}.
+ \item Modify policy\\
+       If you find application does not run due to SELinux access
+       denial, but still want to confine application, you can modify
+       policy.  See section \ref{sec:addpolicy}.
+ \item Confine more applications by creating domains\\
+       If you want to confine unconfined applications, you can prepare
+       domain for them. See section \ref{sec:createdomainGUI}.
+\end{enumerate}
+
+\section{Unconfine applications}\label{sec:unconfine}
+You can unconfine application by 2 ways. Use boolean or remove config file.
+\subsection{GUI}\label{sec:unconfine:gui}
+You can do it from GUI. Select {\it Manage Domain}, then {\it seedit
+Domain/Role Manager} window opens. Select {\it Delete Domain} tab.
+
+\begin{figure}[h]
+\caption{Unconfine application}\label{fig:manage-delete}
+\includegraphics*{images/manage-delete.png}
+\end{figure}
+
+\subsubsection{Temporally disable}
+The easiest way to unconfine application is to disable domain temporally.
+\begin{enumerate}
+ \item Select domain which you want to disable
+ \item Select radio button {\it Temporally}
+ \item Press  Apply button
+\end{enumerate}
+For example, Apache is confined by httpd\_t domain  and you want to
+unconfine Apache. Select httpd\_t, and press apply button.
+Restart Apache and check domain by {\it Status} GUI, you will see {\it
+Unconfined(initrc\_t)} is shown in domain.\\
+To confine it again, select domain from {\it Enable temporally disabled
+domain}, and press  {\it Apply} button.\\
+This behavior is using boolean of SELinux, you can see detail by command
+line.\\
+
+
+\subsubsection{Remove domain}
+Another way to unconfine application is to remove configuration file for
+domain. The procedure is following.
+\begin{enumerate}
+ \item Select domain which you want to disable
+ \item Select radio button {\it Permanently}
+ \item Press  Apply button
+\end{enumerate}
+To  confine application again,  you have to do it by hand.
+\begin{enumerate}
+ \item cd /etc/seedit/policy
+ \item mv /etc/seedit/policy/extras/{\it name of domain}.sp
+       /etc/seedit/policy/{\it name of domain}.sp
+ \item seedit-load
+\end{enumerate}
+File size of generated policy will be smaller than previous method.
+
+\subsection{Command line}
+You can  also do it from command line.
+\subsubsection{Use boolean}
+If you know SELinux boolean, it's very easy.
+For example, confined domain name is httpd\_t, then turn on
+httpd\_disable\_trans boolean and restart daemon.
+\begin{verbatim}
+Example: 
+# setsebool -P httpd_disable_trans 1
+# /etc/init.d/httpd restart
+# seedit-unconfined -e
+Current SELinux mode: enforcing
+PID     Comm    Domain
+1111     httpd    Unconfined(initrc_t)
+\end{verbatim}
+You can confine again by turning off boolean
+\begin{verbatim}
+Example: 
+# setsebool -P httpd_disable_trans 0
+# /etc/init.d/httpd restart
+# seedit-unconfined -e
+Current SELinux mode: enforcing
+PID     Comm    Domain
+1111     httpd   Confined by httpd_t domain
+\end{verbatim}
+\subsubsection{Remove config file}
+Config file of domain is located
+/etc/seedit/policy/{\it domain name}.sp.
+If you remove it and restart application, you can unconfine application.
+See example below.
+\begin{verbatim}
+Example: 
+# cd /etc/seedit/policy
+# mkdir unused
+# mv httpd_t.sp unused
+# seedit-load
+# /etc/init.d/httpd restart
+# seedit-unconfined -e
+Current SELinux mode: enforcing
+PID     Comm    Domain
+1111     httpd    Unconfined(initrc_t)
+\end{verbatim}
+If you want confine again, place config file to /etc/seedit/policy dir.
+\begin{verbatim}
+Example: 
+# cd /etc/seedit/policy
+# mv unused/httpd_t.sp .
+# seedit-load
+# /etc/init.d/httpd restart
+# seedit-unconfined -e
+...
+\end{verbatim}
+\section{Simplified Policy basics}\label{sec:policy}
+\subsection{Where is simplified policy?}
+Our simplified policy is located at /etc/seedit/policy
+directory. In the directory, files named {\it domain name}.sp are
+located. 
+\subsection{Policy syntax overview}
+Simplified policy is described in syntax called Simplified Policy Description
+Language(SPDL). For detail, see other document(SPDL specification).
+You do not have to understand its full specification, because there is a
+helper tool when you describe policy. But it is better for you to be
+able to understand policy. \\
+ Let's see overview of SPDL by looking at example.
+Figure \ref{policyexample} shows policy for Apache web server.
+
+\begin{figure}
+\caption{Typical example of policy: Policy for Apache Web server}\label{policyexample}
+\begin{verbatim}
+     1  {
+     2  domain httpd_t;
+     3  program /usr/sbin/httpd;
+     4  include common-relaxed.sp;
+     5  include daemon.sp;
+     6  include nameservice.sp;
+     7  allow /var/www/** r,s;
+     8  allow /var/log/httpd/** r,a,s;
+     9  allow /etc s;
+    ...<snip>..
+    10  allownet -protocol tcp -port 80,443 server;
+    11  allowpriv netlink;
+    12  }	
+\end{verbatim}
+\end{figure} 
+
+\subsubsection{Give domain to application}
+Line 2 and 3 is configuration that gives domain to application .
+Line 2 names domain as httpd\_t. Access rights for the domain is
+configured. By default domain has {\it no} access rights, by configuring to
+allow access to resources, domains can access resources.\\
+
+line 3 means we will give httpd\_t
+domain to /usr/sbin/httpd. By them, when /usr/sbin/httpd is executed, it
+is confined by httpd\_t domain.
+\begin{itemize}
+ \item Note to experts\\
+       To give domain we are using SELinux's domain transition
+       mechanism. By line 2 and 3, domain transition from unconfined
+       domain(such as initrc\_t) to httpd\_t, and entry point is
+       /usr/sbin/httpd(which is labeled automatically by SPDL
+       compiler).  So you have to notice that domain transition does
+       not happen from confined domain.
+\end{itemize}
+\subsubsection{Import typical configuration}
+By line 4,5,6 configurations common to applications are imported.
+To see what is imported, see files in include directory.
+For example, {\it include include nameservice.sp;}, configuration that
+is described in include/nameservice.sp is imported. Read access to files such
+as /etc/hosts are allowed.
+
+\subsubsection{Allow access to file}
+Line 7-10 allows access to files. File name and permissions are described.
+For filename, you can use grab like below. 
+\begin{verbatim}
+directory/* : means files under directory, not include subdirectory.
+directory/**: means files under directory, including files under
+		subdirectory.
+\end{verbatim}
+File name that starts with  \textasciitilde ~ represents
+home directory(Not including /root).
+\begin{verbatim}
+~/public_html/**
+\end{verbatim}
+means public\_html directories under each user's home directories(except
+/root).
+
+
+You can specify following permissions.
+\begin{itemize}
+ \item Basic permissions
+       \begin{itemize}
+	\item s\\
+	      Search.Permission to search file tree.i.e. Read file name list
+	      in directory. For file, it means nothing.
+	      
+	\item  r\\
+	      Read files.
+	\item x\\
+	      Execute files.
+	\item  w\\
+	      Write. This includes write,append,create,delete files.
+       \end{itemize}
+ \item Detailed permissions\\
+       w permission is allowing too much, if you want more security, 
+       w permission can be splitted into 5.
+       \begin{itemize}
+	\item a\\
+	      Append.
+	\item o\\
+	      Overwrite. This means, write open file.
+	\item c\\
+	      Create. Create files.
+	\item e\\
+	      Erase. Delete files.
+	\item t\\
+	      Setattr.Modify file attribute(not including file security attribute).
+       \end{itemize}       
+\end{itemize}
+Now you can understand line 7-9.
+\begin{itemize}
+ \item Line7: http\_t can see file lists and read all files under
+       /var/www, including sub-directories.
+ \item Line 8:
+       http\_t can see file lists, read/append all files under
+       /var/log/httpd, including sub-directories.
+ \item Line 9:
+       httpd\_t can see file list in /etc. Can not do anything files
+       in /etc directory. Because /etc/* is not described.
+\end{itemize}
+
+\subsubsection{Allow access to network}
+Access to network can be described by simplified policy.
+By line 10, httpd\_t is allowed to behave as a server using tcp 80,443 port.\\
+If you want to allow httpd\_t to connect MySQL(TCP 3306), you have to
+specify following.\\
+allownet -protocol tcp -port 3306 client;\\
+You can use -1023, 1024-, and * for port number. -1023 means all
+wellknown ports(excepts ports used by other domains). 1024- means all
+ports(except ports used by other domains) over 1024, and * means all port number.
+
+
+\subsubsection{Allow other privilege}
+Other important operations not related to files and networks are restricted by
+SELinux. You can use {\it allowpriv name\_of\_privilege;}.
+For example, usage of netlink socket(it is used to communicate with
+kernel) is allowed in line 11.
+
+\subsection{GUI Editor}\label{sec:guieditor}
+By selecting {\it Edit Policy} from control panel, you can launch policy Editor.
+From {\it Open} icon, you can select domain.
+For example, when you open httpd\_t domain, you can see like figure \ref{fig:edit}.
+You can  edit policy like text editor.\\
+By {\it Save} button, you can save it and apply edited policy, policy
+load is automatically done.\\
+{\it Reload }  button read configuration file for domain  again, it is
+useful when you edit policy from another tool(such as generator).\\
+By {\it Add} button, you can insert policy at the end of file from GUI selection window.
+You can see window like Figure \ref{fig:edit-file} and  \ref{fig:edit-network}.
+From file tab, you can insert configuration related to file,  in  the
+example of e Figure \ref{fig:edit-file}, after pressing  {\it Add},
+\begin{verbatim}
+allow /var/www/** r,s;
+\end{verbatim}
+will be inserted.
+From network tab, you can insert configuration related to file,  in  the
+example of e Figure \ref{fig:edit-network}, after pressing  {\it Add},
+\begin{verbatim}
+allownet -protocol tcp -port 80 server;
+\end{verbatim}
+will be inserted.
+
+
+\begin{figure}
+\caption{GUI Editor}\label{fig:edit}
+\includegraphics*{images/edit.png}
+\end{figure}
+
+\begin{figure}
+\caption{}\label{fig:edit-file}
+\includegraphics*{images/edit-file.png}
+\end{figure}
+
+\begin{figure}
+\caption{}\label{fig:edit-network}
+\includegraphics*{images/edit-network.png}
+\end{figure}
+
+
+\clearpage
+\section{Add policy by policy generation tool}\label{sec:addpolicy}
+\subsection{Test in permissive mode}
+If you find confined application run due to SELinux denial, you have to
+add policy. \\
+Before trying to add policy, test in permissive mode.
+If application run in permissive mode, it is highly possible that SELinux is denying some access. You
+have to add policy. We have GUI and command line utility.
+
+
+\subsection{How policy generator works?}
+Policy is generated from SELinux access log.
+In test in permissive mode, access log is obtained.
+In permissive mode, if access is denied by policy, it only takes log. To
+make application work, you have to allow denied access. \\
+
+Following is example of access denial log in audit.log. By this example,
+how policy generator generates policy is shown.
+\begin{verbatim}
+----
+time->Wed Apr 26 18:34:32 2006
+1: type=PATH msg=audit(1146090872.442:29): item=0 
+name="/etc/vsftpd/vsftpd.conf" flags=101  inode=584775 dev=03:03 
+mode=0100600 ouid=0 ogid=0 rdev=00:00
+type=CWD msg=audit(1146090872.442:29):  
+cwd="/etc/selinux/seedit/src/policy/simplified_policy"
+2: type=SYSCALL msg=audit(1146090872.442:29): arch=40000003 
+syscall=5 success=yes exit=3 a0=bfb04c52 a1=8800 a2=0 a3=8800 
+items=1 pid=13151 auid=4294967295 uid=0 gid=0 euid=0 suid=0 
+fsuid=0 egid=0 sgid=0 fsgid=0 comm="vsftpd" exe="/usr/sbin/vsftpd"
+3: type=AVC msg=audit(1146090872.442:29): avc:  denied  { read } 
+for  pid=13151 comm="vsftpd" name="vsftpd.conf" dev=hda3 
+ino=584775 scontext=user_u:system_r:ftpd_t 
+tcontext=system_u:object_r:default_t tclass=file
+----	
+\end{verbatim}
+Line 3 means, {\it read access by ftpd\_t domain to filename vsftpd.conf is denied}.
+From line 3,  we can say that following should be added.\\\
+\begin{verbatim}
+allow vsftpd.conf r;
+\end{verbatim}
+
+However, full path for vsftpd.conf is not known. To obtain full path we
+use log in line 1. It says full path for vsftpd.conf is
+/etc/vsftpd/vsftpd.conf.
+By combining line 1 and 3 we can conclude that following should be
+added.
+\begin{verbatim}
+allow /etc/vsftpd/vsftpd.conf r;	
+\end{verbatim}
+If you are not running auditd service log in line 1 is not obtained. In
+other words, full path information is not included in log. That is why
+we recommend to run auditd in using SELinux Policy Editor.\\
+When  auditd is not running policy generator tries to obtain full path
+by locate command, but it often fails.
+
+
+\subsection{GUI(policy generator)}\label{sec:addpolicy}
+
+\subsubsection{Launch tool}
+
+Select {\it Generate Policy} from control panel, window like  figure
+\ref{fig:vsftpd-generate-1} will open.
+
+\begin{figure}
+\caption{Policy Generate tool}\label{fig:vsftpd-generate-1}
+\includegraphics*{images/vsftpd-generate.png}
+\end{figure}
+Usually, you do not have to configure nothing.
+Press {\it Generate policy } button.
+
+
+What can be configured is shown below for reference.
+\begin{itemize}
+ \item Input\\
+       This is input source of SELinux access log. If auditd service is
+       running, choose audit.log. auditd service is not running choose
+       dmesg. 
+ \item Generate more secure policy\\
+       If checked, generator trys to generate more secure policy. In
+       current version, it trys to use detailed file write
+       permission(a,o,c,e,t). If not checked, those permissions are not
+       used, instead w permission is used in generated policy.
+ \item Read All log\\ 
+  When checked, read all message from log input. If not input is read
+       only from last policy load(the place where load\_policy
+       permission is granted).
+ \item Skip search log\\
+       When checked, access denial for dir:search permission is
+       skipped. dir:search  often lead to unwanted output.
+\end{itemize}
+
+
+\subsubsection{Examine result and add policy}
+
+After pressing {\it Generate policy } button,  policy is generated.
+It takes  some time. When finished, result is outputted in Result tab.
+Figure \ref{fig:vsftpd-generate-result-1} is example output.
+
+\begin{figure}
+\caption{Policy Generate result}\label{fig:vsftpd-generate-result-1}
+\includegraphics*{images/vsftpd-generate-result.png}
+\end{figure}
+
+First row is asking, do you want to add {\it allownet -protocol tcp -port
+1024- server;} to vsftpd\_t domain? And Log is access denial of SELinux,
+from that log policy is generated.
+If you want to  add policy, check check box.\\
+{\it Glob} button is very useful.You can allow access to all files in directories.
+For example, select row {\it allow /etc/vsftpd/vsftpd.conf r,s;}
+After clicking {\it Glob} button, the filename changes  like below.
+\begin{verbatim}
+/etc/vsftpd/vsftpd.conf ->
+/etc/vsftpd/* ->
+/etc/vsftpd/** ->
+/etc/* ->
+/etc/** ->
+/* ->
+/** ->
+\end{verbatim}
+By {\it Undo Glob}, filename get back to previous one.\\
+Policy that is going to be added is displayed in {\it Following will
+be saved}, like figure \ref{fig:vsftpd-generate-save-1}.
+If it looks good, press {\it Save and Apply} button.
+The policy is added to domain, and policy is loaded to kernel.
+
+\begin{figure}
+\caption{Before save}\label{fig:vsftpd-generate-save-1}
+\includegraphics*{images/vsftpd-generate-save.png}
+\end{figure}
+
+
+\subsection{Command line(audit2spdl)}
+You can add policy by audit2spdl command. The usage is easy.
+When auditd is running
+\begin{verbatim}
+# audit2spdl -al
+\end{verbatim}
+When auditd is not running,
+\begin{verbatim}
+# audit2spdl -dl
+\end{verbatim}
+
+You can read log by specifying filename, 
+\begin{verbatim}
+# audit2spdl -l -i /var/log/messages 
+\end{verbatim}
+This command translate SELinux log denial to simplified policy.
+It is recommended to use auditd service if it is prepared for your
+distro. For Fedora Core 5, you can install auditd by following commands.
+\begin{verbatim}
+#yum install audit
+#chkconfig auditd on
+#/etc/init.d/auditd start
+\end{verbatim}
+
+
+Following is sample output.
+\begin{verbatim}
+#audit2spdl -dl
+.... It takes some time...
+-------------------------
+#SELinux deny log:
+audit(1146162965.963:16): avc:  denied  { read } for  pid=6653 
+comm="vsftpd" name="vsftpd.conf" dev=hda3 ino=584775 
+scontext=user_u:system_r:ftpd_t 
+tcontext=system_u:object_r:default_t tclass=file
+#Suggested configuration
+File ftpd_t.sp:
+allow /etc/vsftpd/vsftpd.conf  r;
+-------------------------
+...
+\end{verbatim}
+
+Above says you have to add 
+\begin{verbatim}
+allow /etc/vsftpd/vsftpd.conf  r;	
+\end{verbatim}
+to ftpd\_t.sp to resolve SELinux access denial.
+
+To add generated policy, in above example, 
+open /etc/seedit/policy/vsftpd.sp.
+and add allow /etc/vsftpd/vsftpd.conf  r;	
+between ${}$, like below
+\begin{verbatim}
+{
+domain vsftpd\_t
+program /usr/sbin/program;
+allow ....
+<add here!!>
+
+}
+\end{verbatim}
+After adding file, you have to notice it to SELinux kernel. Type seedit-load.
+\begin{verbatim}
+#seedit-load
+seedit-load: Success
+\end{verbatim}
+You can see progress of seedit-load by -v option like below
+\begin{verbatim}
+# seedit-load -v
+mkdir -p ./sepolicy;
+m4 -s ./simplified_policy/*.sp >./simplified_policy/all.sp;
+/usr/bin/seedit-converter -i ./simplified_policy/all.sp -o 
+./sepolicy -b ./base_policy -I ./simplified_policy/include ;
+.................
+
+cp /etc/selinux/seedit/contexts/files/file_contexts.all 
+/etc/selinux/seedit/contexts/files/file_contexts.all.old
+seedit-load: Success	
+\end{verbatim}
+In above case, you can add 
+\begin{verbatim}
+allow /etc/vsftpd/* r;.	
+\end{verbatim}
+It is a little different from that suggested by audit2spdl.
+Because system administrate knows /etc/vsftpd is vsftp's configuration
+directory, so it is more effective to allow access whole /etc/vsftpd directory.
+
+\subsubsection{Advanced topic:Notice about audit2spdl}
+\begin{enumerate}
+ \item Not best security\\
+audit2spdl not always suggest best solution.
+You have to review suggested configuration carefully.
+For example, audit2spdl does not generate detailed file
+permission(o,a,c,e,t), but generate w. \\
+To generate permission o,a,c,e,t, use s option, like audit2spdl -dls .
+
+
+\item Fail to suggest\\
+In special case, suggesting configuration fails, following message
+       appear.
+\begin{verbatim}
+#Failed to generate, because failed to obtain fullpath.	
+\end{verbatim} 
+In SELinux log, full-path is not contained. To obtain full path audit2spdl
+       is doing some works, but it sometimes fail. 
+To obtain full-path in all cases, you have to use auditd.
+auditd is not installed in Fedora Core 5.
+You can use auditd like below.
+\begin{verbatim}
+#yum install audit
+#chkconfig auditd on
+#/etc/init.d/auditd start
+\end{verbatim}
+The use audit2spdl -al, and try again.
+It is also faster than audit2spdl -dl.
+
+
+\end{enumerate}
+
+
+\section{Creating domain}\label{sec:createdomainGUI}
+Let's see by example to create domain ftpd\_t for vsftpd, and confine behavior
+of vsftpd. By following this example you'll be able to prepare domain
+for other programs.
+Generally, process of creating domain is following.
+\begin{enumerate}
+ \item Create template\\
+ \item Check domain\\
+ \item Test run and add policy\\
+\end{enumerate}
+
+\subsection{Create domain from GUI}
+We will create vsftp\_t domain, and configure the domain to work as
+Anonymous FTP server. 
+
+\subsubsection{Create template}
+By Domain manager GUI you can create template configuration.
+From control panel, select {\it Manage Domain}.
+Let's assign vsftpd vsftpd\_t domain. 
+
+You can do it like  fig \ref{fig:template}.
+First, specify name of executable file. Enter {\it /usr/sbin/vsftpd}.\\
+Next, specify domain name. Enter {\it vsftpd\_t}.\\
+There are some questions you have to answer. \\
+Then  press {\it Create Template} button. You will see created
+configuration is shown in {\it Created template}.\\
+
+
+\begin{figure}
+\caption{Create new domain}\label{fig:template}
+\includegraphics*{images/template.png}
+\end{figure}
+
+If you know about application, you already know what kind of access
+rights are necessary. You can add it now. If you do not know, do not
+worry. You can generate policy later.\\
+You will prepare anonymous FTP server,so read access to /var/ftp is
+necessary. And you need access right to TCP 21 port to behave as FTP
+server.\\
+You can add configuration from GUI. Press {\it Add policy} button.
+Figure \ref{fig:add-file}, you are configuring to allow read access
+under /var/ftp.
+Figure \ref{fig:add-network}, you are configuring to allow usage of tcp
+port 21. By pressing {\it Add} button, configuration 
+\begin{verbatim}
+allow  /var/ftp/** r,s;
+allownet -protocol tcp -port 21 server;
+\end{verbatim}
+is added.
+After adding configuration, press {\it Save and Apply} button.
+
+\begin{figure}
+\caption{Insert file access control policy}\label{fig:add-file}
+\includegraphics*{images/add-file.png}
+\end{figure}
+
+
+\begin{figure}
+\caption{Insert network access control policy}\label{fig:add-network}
+\includegraphics*{images/add-network.png}
+\end{figure}
+
+If you are installing target application from rpm package, you can save
+time to create policy by {\it Generate more policy} button. By pressing
+this button, some policy is generated using information in rpm package.
+In this example case, following will be generated.
+\begin{verbatim}
+allow /etc/pam.d/vsftpd r,s;
+allow /etc/vsftpd/** r,s;
+allow /usr/sbin/vsftpd r,s;
+allow /var/ftp/** r,s;
+\end{verbatim}
+
+%% chroot環境でのパス提示の注意
+
+\subsubsection{Check domain}
+Switch to permissive mode(you can do by setenforce 0 or status GUI).
+Start vsftpd and make sure its domain is vsftpd\_t(You can do it by
+status GUI)
+
+\subsubsection{Test run and add policy}
+Test run vsftpd in permissive mode.
+
+Let's test ftp like following.
+\begin{verbatim}
+$ ftp localhost
+Name (localhost:ynakam): Anonymous
+Password: <anything is OK>
+...
+and do something..	
+\end{verbatim}
+And see log.
+\begin{verbatim}
+#auserch -m AVC
+\end{verbatim}
+Various accesses are denied. So you have to add policy that allows
+denied access.
+You can do it easily  by policy generation tool.
+Select {\it Generate Policy} from control panel, window like  figure
+\ref{fig:vsftpd-generate} will open. Usually, you do not have to change
+configuration, if you want more secure configuration, check {\it
+Generate more secure policy}, it will generate policy that uses detailed
+write permission, but you will need more time to complete configuration.
+To generate policy press {\it generate} button. Then result is  shown
+like figure \ref{fig:vsftpd-generate-result}. 
+If you want to add generated  policy, check check boxes, and if you want
+to allow to directory, use Glob button.
+In this case,  it is more efficient to allow access to /etc/vsftpd
+directory, so click Glob button twice.\\
+Filename  changes  /etc/vsftpd/vsftpd.conf  $\rightarrow$ /etc/vsftpd/*
+$\rightarrow$ /etc/vsftpd/**.\\
+In this case, configuration like \ref{fig:vsftpd-generate-save} will be
+saved. Click {\it Save and Apply} button.\\
+Test vsftpd again and use Policy Generation tool again, if you see
+nothing, then test in Enforcing mode. If it works, all done!. If not,
+add configuration by Policy Generation tool until it works.
+
+
+\begin{figure}
+\caption{Policy Generate tool}\label{fig:vsftpd-generate}
+\includegraphics*{images/vsftpd-generate.png}
+\end{figure}
+
+\begin{figure}
+\caption{Policy Generate result}\label{fig:vsftpd-generate-result}
+\includegraphics*{images/vsftpd-generate-result.png}
+\end{figure}
+
+\begin{figure}
+\caption{Before save}\label{fig:vsftpd-generate-save}
+\includegraphics*{images/vsftpd-generate-save.png}
+\end{figure}
+
+\clearpage
+
+\subsection{Create domain from command line}
+
+\subsubsection{Create template}
+You can create template configuration by seedit-template command.
+Usage is following.
+\begin{verbatim}
+seedit-template -d <domain> -e <path to application> -o <output>
+\end{verbatim}
+Following is output for us.
+\begin{verbatim}
+# seedit-template -d vsftpd_t -e /usr/sbin/vsftpd
+{
+domain ftpd_t;
+program /usr/sbin/vsftpd;
+include common-relaxed.sp;
+include daemon.sp;
+include nameservice.sp;
+}
+\end{verbatim}
+Template configuration is generated. In this, domain is named, and given
+to /usr/sbin/vsftpd. By {\it include }, access rights commonly used for
+daemons are imported.
+You have to save this configuration under
+/etc/seedit/policy/ftpd\_t.sp.
+Note that file name must be {\it domain-name}.sp, otherwise seedit-load
+fails. \\
+Save above configuration to /etc/seedit/policy/ftpd\_t.sp.\\
+
+
+\subsubsection{Check domain}
+Load simplified policy by following.
+\begin{verbatim}
+#seedit-load
+\end{verbatim}
+And switch to permissive mode, because vsftpd will fail to work in
+enforcing mode due to SELinux access denial.
+\begin{verbatim}
+#setenforce 0
+#getenforce
+Permissive
+\end{verbatim}
+Start vsftpd and check domain of vsftpd by seedit-unconfined.
+\begin{verbatim}
+# /etc/init.d/vsftpd restart
+# seedit-unconfined -e
+10530   vsftpd  Confined by ftpd_t
+\end{verbatim}
+You will see vsftpd is running as ftpd\_t as above.
+
+\subsubsection{Test run and add policy}
+Let's  run application in permissive mode, and find out what access is
+denied, and allow such access by audit2spdl.
+In this article, we aim to develop policy for vsftpd to work as
+Anonymous FTP server.
+Let's test ftp like following.
+\begin{verbatim}
+$ ftp localhost
+Name (localhost:ynakam): Anonymous
+Password: <anything is OK>
+...
+and do something..
+\end{verbatim}
+And see log.
+\begin{verbatim}
+#dmesg	
+\end{verbatim}
+Various accesses are denied.
+Let's audit2spdl.
+
+\begin{verbatim}
+#audit2spdl -dl
+-------------------------
+#SELinux deny log:
+audit(1146179470.043:86): avc:  denied  { search } for  
+pid=10904 comm="vsftpd" name="vsftpd" dev=hda3 ino=584772 
+scontext=user_u:system_r:ftpd_t 
+tcontext=system_u:object_r:etc_t tclass=dir
+#Suggested configuration
+File ftpd_t.sp:
+allow /etc/vsftpd  s;
+-------------------------
+
+-------------------------
+#SELinux deny log:
+audit(1146179477.891:108): avc:  denied  { search } for  
+pid=10911 comm="vsftpd" name="ftp" dev=hda3 ino=163477
+ scontext=user_u:system_r:ftpd_t 
+tcontext=system_u:object_r:var_t tclass=dir
+#Suggested configuration
+File ftpd_t.sp:
+allow /var/ftp  s;
+-------------------------
+.....
+\end{verbatim}
+audit2spdl tells us various configuration should be added.
+You might find following. 
+\begin{verbatim}
+-------------------------
+#SELinux deny log:
+type=AVC msg=audit(1148486754.718:36): avc:  denied  { lock } for  
+pid=11763 comm="vsftpd" name="test.txt" dev=hda3 ino=163311 
+scontext=user_u:system_r:ftpd_t tcontext=system_u:object_r:default_t
+ tclass=file
+#Suggested configuration
+File ftpd_t.sp:
+#Failed to generate, because failed to obtain fullpath.
+#allow test.txt  r,s;
+-------------------------
+\end{verbatim}
+It means failed to suggest configuration because audit2spdl failed to
+guess fullpath for test.txt.
+But you know fullpath of test.txt is /var/ftp/pub/test.txt.
+So, you will add allow /var/ftp/pub/test.txt r,s;
+\\
+
+In my case, following are suggested at first test.
+\begin{verbatim}
+allow /etc/vsftpd  s;
+allow /var/ftp  s;
+allow /root  s;
+allownet -protocol tcp -port 21 server;
+allowpriv cap_sys_chroot;
+allow /var/log/xferlog  r,w;
+allow /etc/vsftpd/vsftpd.conf  r;
+allow /etc/vsftpd/vsftpd.conf  s;	
+\end{verbatim}
+You can add them, but you will notice it is more effective 
+To allow r,s to /var/ftp and /etc/vsftpd.
+So, your ftpd\_t.sp will be following.
+\begin{verbatim}
+{
+domain ftpd_t;
+program /usr/sbin/vsftpd;
+include common-relaxed.sp;
+include daemon.sp;
+include nameservice.sp;
+# added by audit2spdl suggestion
+allow /etc/vsftpd/**  r,s;
+allow /var/ftp/**  r,s;
+allow /var/log/xferlog  r,w;
+allow /root  s;
+allownet -protocol tcp -port 21 server;
+allowpriv cap_sys_chroot;
+}
+\end{verbatim}
+After seedit-load, test vsftpd again.
+You will find access denial again.
+By audit2spdl you will find like following.
+\begin{verbatim}
+allownet -protocol tcp -port 6353 server;	
+\end{verbatim}
+This says ftpd is trying to behave server using 6553 tcp.
+But the port number varies time to time.So it seems ftpd requires to use all port over 1024.
+You can add following.
+\begin{verbatim}
+allownet -protocol tcp -port 1024- server;	
+\end{verbatim}
+Then, test again and add policy until no access denial is outputted.
+At last, switch to enforcing mode.
+\begin{verbatim}
+#setenforce 1
+\end{verbatim}
+Test vsftpd again.  \\
+%%%enforcingモードでテスト
+%コンパイルエラーの見方
+\\
+SPDL has advanced feature to configure more secure policy. 
+For example, login user is not confined by default, 
+to enhance login user security, you can use RBAC feature. 
+About RBAC see RBAC guide.
+
+\section{Other notices}
+\begin{itemize}
+       
+ \item Notice about file move\\
+       When you move file to another directory by mv command, you have to use restorecon
+       command. Like below.
+\begin{verbatim}
+* Example: Upload homepage
+# pwd
+/root/homepage/index.html
+# mv index.html /var/www/html
+# restorecon -R /var/www/html	
+\end{verbatim}
+       If you forget last restorecon command, Apache will not be able to
+       access /var/www/html/index.html, even if allow /var/www/** is
+       described for httpd\_t.sp.
+This is because, access right is inherited from source file in mv command. 
+In this example, httpd\_t domain can not access under /root, but can
+       read under /var/www.     After mv command, access rights to
+       /var/www/html/index.html is the same as
+       /root/homepage/index.html.
+       To fix this situation you have to use restorecon command.\\
+       GUI policy generator sometimes suggests restorecon.
+ \item File creation\\
+       Newly created file inherits access rights from directory. See
+       example below.\\
+Assume following configuration exists.
+       \begin{verbatim}
+domain foo_t;
+allow /foo/bar/** r,s;
+allow /foo/bar/test.txt r,w,s;
+       \end{verbatim}
+foo\_t can read files under /foo/bar, and write /foo/bar/test.txt.
+If /foo/bar/test.txt does not exist at the time of configuration, 
+and after configuration /foo/bar/test.txt is created, foo\_t can {\it
+       read} test.txt, because newly created test.txt inherits allow
+       /foo/bar/**. This is confusing, but limitation of our
+       implementation.\\
+To fix this, you have to do 
+\begin{verbatim}
+restorecon -R /foo/bar	
+\end{verbatim}
+Then foo\_t can read/write test.txt.\\
+ \item Why restorecon is necessary?\\
+       SELinux internally identifies resources by label called {\it
+       type}.
+       When mv command, label is preserved.When file is newly created,
+       type is inherited from belonging directory.
+       We have to fix relationship between file and type by restorecon command.
+
+ \item cron jobs\\
+       Cron jobs are not confined. If you want to protect cron job,
+       edit system\_crond\_t.sp, delete {\it allowpriv all;}. However,
+       configuring cron jobs correctly will be very difficult.
+       
+ \item Dynamically created/deleted files\\
+       For files that are dynamically created/deleted, access control
+       sometimes do not work well.
+       See example below.
+\begin{verbatim}
+domain foo_t;
+allow /foo/bar/** r,s;
+allow /foo/bar/test.txt r,w,s;
+\end{verbatim}
+In this, if test.txt is deleted, and created, test.txt inherits access
+       right of directory.
+So, foo\_t can read test.txt but can not write test.txt.
+You can fix by restorecon, but when it is re-created, you have to do
+       restorecon again..\\
+Therefore, for files whose access right is different from directory, and they
+       are deleted/created, access control does not work well.
+To resolve this, you have following solutions.
+\begin{enumerate}
+ \item Give up controlling access for individual files\\
+       you can write\\
+allow /foo/var/** r,s,{\it w}.
+By configuring above, if test.txt is deleted and created, foo\_t can
+       write test.txt, however foo\_t can write other files under
+       /foo/bar directory.
+ \item Use allowtmp\\
+       To protect such temporally files, SPDL supports allowtmp
+       statement.
+You can configure like following.
+\begin{verbatim}
+       allowtmp /foo/bar -name auto  r,w,s;	
+\end{verbatim}
+       By allowtmp statement, file can be identified by label in SPDL.
+       This allowtmp statement means, files created under /foo/bar is
+       labeled as foo\_foo\_bar\_t(-name auto generates label name based
+       on domain and directory name, foo\_t + /foo/bar = foo\_foo\_bar\_t).
+       And foo\_t can read, write files that have foo\_foo\_bar\_t label.
+       By above, when  test.txt is deleted and created again, test.txt
+       is given label(foo\_foo\_bar\_t) and identified by label.
+       In allowtmp, file type transition in SELinux is internally used.\\
+       If you want to access test.txt from other domain, you have to
+       specify label not filename, like below.
+\begin{verbatim}
+	allow foo_foo_bar_t r;
+\end{verbatim}
+       In default policy,allowtmp is used to control access to /etc/mtab and temporally
+       files under /tmp, /var/tmp.
+\end{enumerate}
+ \item Device files other than /dev\\
+       Devices have critical impact to security, so it is treated specially.
+       In default policy, device is assumed to exist under /dev.
+       If you write allow statement for devices other than /dev
+       directory, you can not access it.
+       If you want to access devices other than /dev, you have to write
+       allowdev statement.
+       If you want to read access devices in /var/chroot/dev/null, 
+       you have to write following, before describing allow /var/chroot/dev/null.
+       \begin{verbatim}
+	allowdev -root /var/chroot/dev;	
+       \end{verbatim}
+ \item Symbolic link\\
+       Configuration to file that contains symbolic link is ignored.
+       For example, \\
+       allow /etc/init.d/httpd r;\\
+       is ignored(init.d is symbolic link to rc.d/init.d).
+ \item Hardlink\\
+       In Linux system, contents of file can be refereed by multiple name
+       using hard link. Hardlink is rarely used recent distro, but you
+       have to note about this if you want to preserve security.\\
+       In SPDL, following rule exists about hard link.\\
+       {\it If file has multiple hardlink, to access the file, you must
+       specify originally existing file name. Other file names are ignored}\\
+       For example, /etc/shadow and /var/chroot/etc/shadow is hardlinked,
+       and /etc/shadow exists originally, to access contents of
+       /etc/shadow, you have to use file name /etc/shadow. Configuration
+       using /var/chroot/etc/shadow will be ignored. 
+       If some domain(assume foo\_t ) want to read
+       /var/chroot/etc/shadow, you have to configure {\it allow
+       /etc/shadow r;}\\
+       Next, there is a question, what is criteria of file name {\it
+       originally} exist? Following is answer.\\
+       In following, /etc/shadow and /var/shadow is assumed as
+       hardlinked files.
+       \begin{enumerate}
+	\item If rule is described to one file name, the file name is treated as
+	      original.\\
+	      Ex: allow /etc/shadow r; is described in some domain, but
+	      rules using filename /var/shadow is not described,
+	      /etc/shadow is treated as original.
+	\item If rules are described to multiple hardlinked file name, the
+	      filename that name is the youngest is treated as
+	      original\\
+	      Ex: allow /etc/shadow r, and allow /var/shadow r; are
+	      described in some domains, /etc/shadow is treated as
+	      original, because /var/shadow $>$ /etc/shadow.
+	\item If rules are not described for hardlinked files, the
+	      directory names that hardlinks exist are compared. The
+	      file whose directory  name is oldest  is original.\\
+	      Ex: /etc/shadow, /var/shadow do not appear in any domain.
+	      Then /var/shadow is treated as original. Because
+	      /var $>$ /etc.
+       \end{enumerate}
+       If you are not sure which hardlink is {\it original}, you can
+       use all names. It means, you can describe
+\begin{verbatim}
+allow /etc/shadow r;
+allow /var/shadow r;
+\end{verbatim}
+1 of 2 will be ignored, and do no harm.
+  
+       Above treatment of hardlink is necessary to avoid a kind of {\it back door }
+       of path name based configuration. Assume hard link to
+       /etc/shadow is created by some trick under /var/www/html, without this
+       behavior, Apache web server can access contents of /etc/shadow
+       via /var/www/html/shadow. To protect this, we must limit way to access
+       hard link to 1.\\
+       http://securityblog.org/brindle/2006/04/19 is good reference.\\
+
+\end{itemize}
+
+
+\section{Tips}
+\begin{enumerate}
+ \item Confining Web applications\\
+
+By default, CGI will run as httpd\_t domain. httpd\_t domain is a domain
+for Apache Web Server, but domain is inherited to child programs by default.
+If you want to change domain for CGI, you have to use domain\_trans element.
+You can give CGI programs individual domain.
+If you place your CGI in /var/www/cgi-bin, and give it cgi\_t domain,
+create cgi\_t.sp like below.
+\begin{verbatim}
+{
+domain cgi_t;
+domain_trans  httpd_t /var/www/cgi-bin/**;
+include common-relaxed.sp;
+##### allowxxx will be here...
+}
+
+\end{verbatim}
+
+For PHP, you {\it can not } change domain from httpd\_t. It is because
+		PHP is internally executed not using exec system
+		call. SELinux can not give domain for such case, unless
+		PHP is extended to use SELinux system call.
+\item deny\\
+You can register important files in black list by {\it deny} element.
+Following is example.
+\begin{verbatim}
+{
+domain foo_t;
+deny /etc/shadow;
+allow /etc/** r,s;
+}
+\end{verbatim}
+In above, foo\_t is allowed to all files by allow /etc/**, but can not
+access /etc/shadow.
+To access /etc/shadow, you have to write {\it allow /etc/shadow}
+explicitly.
+Some deny elements are written by default in include/common-relaxed.xp
+\end{enumerate}
+
+\section{Questions?}
+If you have a question, feel free to contact to
+Yuichi(himainu-ynakam@miomio.jp). And we have a e-mail list here:\\
+https://lists.sourceforge.net/lists/listinfo/seedit-devel
+\end{document}
